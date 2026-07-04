@@ -1,0 +1,2092 @@
+[
+  {
+    "p": "calibrated a spindle",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "tightened a bracket",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "fused with a gondrel",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "welded a joint seam",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "sanded a rough edge",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "polished a metal plate",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "greased a hinge assembly",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "bolted down a panel",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "aligned the axle housing",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "riveted a steel plate",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "drilled through a bracket",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clamped a wooden beam",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "measured a gear ratio",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "adjusted a valve stem",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "soldered a copper wire",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "sharpened a cutting blade",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "lubricated a rotor shaft",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "milled a metal groove",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "threaded a bolt casing",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "hammered a warped panel",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "filed down a burr",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "sealed a pressure valve",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "mounted a bracket frame",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "torqued a wheel bolt",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "leveled a workbench surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "spliced a frayed cable",
+    "keep": false,
+    "reason": "decay/wear semantics"
+  },
+  {
+    "p": "reinforced a support strut",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "notched a wooden plank",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "buffed a chrome surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "etched a metal surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "pressed a hydraulic lever",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "wrapped a coil spring",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "balanced a spinning rotor",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "carved a groove pattern",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "stamped a metal disc",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "fastened a hinge plate",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "trimmed a rubber gasket",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "shaped a metal bracket",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "vented a pressure chamber",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "sealed a welded seam",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "cranked a hand lever",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "spun a turbine blade",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "fitted a piston sleeve",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "anchored a support beam",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "gauged a cylinder bore",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "reset a pressure gauge",
+    "keep": false,
+    "reason": "requires prior setting"
+  },
+  {
+    "p": "flushed a coolant line",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "packed a bearing sleeve",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "screwed in a fitting",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "wired a control panel",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "insulated a copper coil",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "braced a support column",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "shimmed a loose joint",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "reamed a metal bore",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "honed a cutting edge",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "chiseled a wooden groove",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "capped a hydraulic line",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clipped a wire harness",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "adjusted a tension spring",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "swapped a worn gasket",
+    "keep": false,
+    "reason": "decay/wear semantics"
+  },
+  {
+    "p": "focused a light beam",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "refracted a narrow beam",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "polished a curved lens",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aligned a mirror mount",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "calibrated a laser sensor",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "angled a prism surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diffused a bright glare",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "filtered a red wavelength",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "reflected a beam sideways",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bent a beam of light",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "coated a lens surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "ground a glass lens",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "adjusted a focal length",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "tinted a glass panel",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "scattered a beam of light",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "captured a stray reflection",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "measured a beam intensity",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "projected a beam outward",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "split a beam of light",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "traced a beam pathway",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "shielded a sensor lens",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "cleaned a camera lens",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "polished a mirror edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "adjusted a mirror angle",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "mounted a lens housing",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "sealed a lens casing",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "calibrated a photodetector array",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aligned a fiber cable",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "tuned a laser frequency",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bounced a beam off glass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "channeled light through glass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "reflected sunlight off metal",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "collimated a light beam",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "polarized a beam of light",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "adjusted a shutter aperture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "framed a beam of light",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "captured a beam reflection",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "focused sunlight through glass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "angled a mirror surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diffracted a beam pattern",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "measured a refraction angle",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "cleaned a lens coating",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "adjusted an optical filter",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aligned a telescope lens",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "calibrated a light sensor",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "reflected light off water",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bent light through glass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "captured a glowing reflection",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "shaped a beam of light",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "tuned a lens aperture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "polished an optical surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "adjusted a beam splitter",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aligned a laser pointer",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "measured a beam angle",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "reflected light off metal",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "coated a mirror surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "focused light on glass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "calibrated a beam sensor",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "adjusted a projector lens",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aligned a light filter",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "poured a viscous fluid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "mixed a solvent blend",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diffused a gas cloud",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "siphoned a fuel tank",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "drained a coolant reservoir",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "filtered a murky liquid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "evaporated a thin film",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "condensed a vapor cloud",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bubbled through a solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "stirred a chemical mixture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "dissolved a soluble powder",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "saturated a porous membrane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "pressurized a gas cylinder",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "vented a steam pipe",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "circulated a coolant fluid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "blended a liquid mixture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "sprayed a fine mist",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "atomized a liquid fuel",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "emulsified an oil blend",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "decanted a settled liquid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aerated a still pond",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "carbonated a liquid batch",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diluted a concentrated solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "injected a gas stream",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "released a trapped bubble",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "channeled a fluid stream",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "pumped a viscous slurry",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "drained a settling tank",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "filtered a gaseous mixture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "mixed a saline solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diffused a vapor trail",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "suspended fine particles",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "layered immiscible fluids",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "skimmed a floating residue",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "drizzled a light oil",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "splashed a shallow puddle",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "trickled through a valve",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "seeped through a membrane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "percolated through a filter",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "condensed on a cold surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "vaporized a liquid sample",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "compressed a gas pocket",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "expanded a gas volume",
+    "keep": false,
+    "reason": "growth semantics"
+  },
+  {
+    "p": "bubbled a carbonated drink",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "swirled a liquid mixture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "clarified a cloudy solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "neutralized an acidic solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "buffered a chemical solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "saturated a humid chamber",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "vented a gas pocket",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diffused an aromatic vapor",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "mixed a gaseous compound",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "filtered an airborne particulate",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "drained a hydraulic reservoir",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "circulated a warm fluid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "pumped a saline drip",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diluted a solvent mixture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "sprayed a cooling mist",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "condensed humid air",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "dispersed a fine aerosol",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "wove a woolen thread",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "folded a linen sheet",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "stitched a seam edge",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "knotted a length of rope",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "spun a length of yarn",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "threaded a needle eye",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "draped fabric over a frame",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "quilted a cotton panel",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "pleated a fabric panel",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "hemmed a garment edge",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "braided a leather cord",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "looped a thread strand",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "twisted a fiber strand",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "stretched a canvas sheet",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "smoothed a wrinkled cloth",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "pressed a fabric fold",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "ironed a cotton shirt",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "dyed a wool skein",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "bleached a linen cloth",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "trimmed a loose thread",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "layered a woven fabric",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "bundled a stack of cloth",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "rolled a wool blanket",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "wrapped a fabric bolt",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "tucked a fabric edge",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "knitted a woolen scarf",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "crocheted a lace doily",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "embroidered a floral pattern",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "patched a torn seam",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "mended a torn hem",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "tied a fabric knot",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "bound a fabric edge",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "coiled a length of thread",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "wound a spool of yarn",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "carded a bundle of wool",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "combed a tangle of fiber",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "felted a wool patch",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "matted a fiber bundle",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "teased apart a fiber",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "fluffed a cotton stuffing",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "flattened a fabric crease",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "creased a folded cloth",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "pinned a fabric hem",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "basted a fabric seam",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "seamed two fabric panels",
+    "keep": false,
+    "reason": "contains count word"
+  },
+  {
+    "p": "lined a garment pocket",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "padded a fabric shoulder",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "cushioned a chair seat",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "stuffed a cloth pillow",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "tufted a fabric cushion",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "ruffled a trim edge",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "smocked a bodice panel",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "laced a fabric corset",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "plaited a woven strand",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "separated a woven strand",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "steamed a wrinkled garment",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "starched a cotton collar",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "rinsed a soaked fabric",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "wrung out a damp cloth",
+    "keep": true,
+    "reason": "valid past-tense predicate"
+  },
+  {
+    "p": "hummed against a metal plate",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "resonated within a hollow chamber",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "vibrated along a taut wire",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "oscillated a metal reed",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "reverberated through a stone hall",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "buzzed inside a metal casing",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "rattled a loose bolt",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "thrummed a tensioned cable",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "droned through a ventilation duct",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "chimed against a brass bell",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clanged a metal pipe",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clattered over a wooden floor",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "rumbled beneath a concrete slab",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "whirred inside a motor housing",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "hissed through a narrow valve",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "whined against a spinning gear",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "pulsed through a copper coil",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "throbbed within a steel frame",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "jingled a set of chimes",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "jangled a metal chain",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "tinkled against a glass pane",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clicked a mechanical switch",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "tapped a wooden surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "thumped against a padded wall",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "thudded onto a soft mat",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "boomed across an open field",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "crackled through a speaker cone",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "sizzled on a hot surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "screeched along a metal rail",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "squealed against a rubber belt",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "groaned under a heavy load",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "creaked along a wooden beam",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "whistled through a narrow gap",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "howled through a metal vent",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "moaned within a hollow pipe",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "murmured through a thin wall",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "rustled a sheet of foil",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "swished through open air",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "whooshed past a metal grate",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clanked against a steel drum",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "clunked onto a metal tray",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "banged against a hollow door",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "popped inside a sealed container",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "snapped a taut string",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "pinged off a metal surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "dinged against a glass bell",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "beeped through a small speaker",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "sang through a resonant chamber",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "chirped from a small device",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "trilled through a metal reed",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "twanged a steel string",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "strummed a taut wire",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "plucked a metal string",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "struck a resonant plate",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "drummed against a hollow surface",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "pounded a metal sheet",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "amplified a low frequency",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "dampened a sharp vibration",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "muffled a loud resonance",
+    "keep": true,
+    "reason": "valid past-tense phrase"
+  },
+  {
+    "p": "tilted a wooden wedge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "nested a hollow cylinder",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "stacked a set of blocks",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "aligned a row of pillars",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "angled a supporting beam",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "skewed a rectangular frame",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "offset a parallel edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "rotated a geometric solid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "pivoted a hinged bracket",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "canted a sloped panel",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "staggered a series of shelves",
+    "keep": false,
+    "reason": "sequence vocabulary"
+  },
+  {
+    "p": "layered a stack of plates",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "interlocked a set of gears",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "overlapped a pair of panels",
+    "keep": false,
+    "reason": "explicit count"
+  },
+  {
+    "p": "clustered a group of spheres",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "arranged a grid of tiles",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "spaced a row of columns",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "distributed a load across beams",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "centered a mass within frame",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "balanced a tilted platform",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "leveled a sloped surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "inverted a triangular prism",
+    "keep": false,
+    "reason": "numeric tri-"
+  },
+  {
+    "p": "mirrored a symmetric shape",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bisected a curved arc",
+    "keep": false,
+    "reason": "implies two"
+  },
+  {
+    "p": "intersected a pair of planes",
+    "keep": false,
+    "reason": "explicit count"
+  },
+  {
+    "p": "contoured a curved edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "curved a metal arc",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "warped a flat plane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bent a straight rod",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "splayed a set of struts",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "fanned a row of slats",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "radiated a set of spokes",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "converged a pair of lines",
+    "keep": false,
+    "reason": "explicit count"
+  },
+  {
+    "p": "diverged a set of vectors",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bridged a narrow gap",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "spanned a wide opening",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "straddled a central axis",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "wedged a block into recess",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "slotted a panel into frame",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "embedded a rod within socket",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "encased a cylinder in shell",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "enclosed a space within frame",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "bounded a region with border",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "framed a hollow opening",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "telescoped a set of tubes",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "interleaved a stack of sheets",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "overlaid a grid on plane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "superimposed a pair of shapes",
+    "keep": false,
+    "reason": "explicit count"
+  },
+  {
+    "p": "juxtaposed a pair of blocks",
+    "keep": false,
+    "reason": "explicit count"
+  },
+  {
+    "p": "arrayed a set of columns",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "gridded a flat surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "tessellated a flat plane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "partitioned a hollow space",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "segmented a curved surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "quartered a circular disk",
+    "keep": false,
+    "reason": "implies four"
+  },
+  {
+    "p": "sectioned a rectangular block",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "concentrated a set of rings",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "symmetrized a curved shape",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "skewed a diagonal line",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "angled a corner bracket",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "warmed a metal plate",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "cooled a glass surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "melted along a metal edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "froze across a shallow puddle",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "congealed within a metal tray",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "solidified into a rigid mass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "liquefied a viscous solid",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "vaporized a thin film",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "condensed into fine droplets",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "crystallized within a solution",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "thawed a frozen block",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "hardened into a solid shell",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "softened under gentle heat",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "thickened into a dense paste",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "thinned into a light vapor",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "boiled within a sealed vessel",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "simmered within a metal pot",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "scorched a wooden surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "singed a fabric edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "charred a wooden beam",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "glazed over a smooth surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "frosted a metal pane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "tempered a steel blade",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "annealed a metal rod",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "quenched a heated metal",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "gelled into a solid mass",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "curdled within a container",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "clotted within a narrow tube",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "expanded under intense heat",
+    "keep": false,
+    "reason": "growth semantics"
+  },
+  {
+    "p": "contracted under sudden cold",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "radiated a steady warmth",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "absorbed ambient heat",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "dissipated built up heat",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "insulated a metal core",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "conducted heat through a rod",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "diffused warmth through a chamber",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "saturated with dense moisture",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "condensed into a thin film",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "melted along a glass pane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "froze along a metal rim",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "congealed into a thick layer",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "solidified around a metal rod",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "liquefied within a sealed flask",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "vaporized within a narrow chamber",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "condensed along a cold pipe",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "crystallized along a metal edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "thawed along a metal rim",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "hardened around a metal core",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "softened along a warm edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "thickened within a metal vat",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "thinned across a warm surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "boiled within a narrow flask",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "simmered within a sealed pot",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "scorched a metal surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "singed a paper edge",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "charred a metal grate",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "glazed a cold metal pane",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "frosted a glass surface",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "tempered a metal alloy",
+    "keep": true,
+    "reason": "ok"
+  },
+  {
+    "p": "quenched a molten core",
+    "keep": true,
+    "reason": "ok"
+  }
+]

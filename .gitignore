@@ -15,7 +15,10 @@ venv/
 .pytest_cache/
 
 # Experiment artifacts — regenerable, never committed
-data/
+# (exception: data/pools/ — LLM-authored pools are committed by design,
+#  the deterministic generator depends on them)
+data/*
+!data/pools/
 acts/
 results/
 logs/
