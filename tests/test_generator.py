@@ -16,7 +16,9 @@ from icom.generator.stimuli import MAX_SHUFFLE_ABS_RHO, make_condition_set
 SEED = 20260704
 CONDITIONS = [Condition.FORWARD, Condition.REVERSE, Condition.SHUFFLE]
 VOCAB = [f"zz{c1}{c2}orp" for c1 in "bcdfglmnprst" for c2 in "aeiou"]  # 60 fake nonces
-PREDICATES = [f"polished a metal plate {i}x" for i in range(50)]  # placeholder pool
+# digit-free like the real pool (supervisor bans numbers; the relational
+# no-absolute-coordinate invariant depends on this)
+PREDICATES = [f"polished a {a}{b}ic plate" for a in "bcdfglmnpr" for b in "aeiou"]
 
 
 def _set(family, n=16, idx=0, conditions=CONDITIONS):
