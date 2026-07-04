@@ -130,8 +130,21 @@ def _extract_json(text: str):
     return json.loads(text[start:])
 
 
+AUTHOR_THEMES = [
+    "mechanical/workshop actions",
+    "optics and light (lenses, beams, reflections)",
+    "fluids and gases (pouring, mixing, diffusing)",
+    "textiles and soft materials (folding, weaving)",
+    "sound and vibration (humming, resonating)",
+    "geometry and spatial arrangement (tilting, nesting)",
+    "temperature and state changes (warming, congealing)",
+    "granular and powder handling (sifting, scattering)",
+]
+
+
 def author_event_predicates(
-    n: int, model: str, existing: list[str] | None = None, temperature: float = 1.0
+    n: int, model: str, existing: list[str] | None = None,
+    temperature: float = 1.0, theme: str | None = None,
 ) -> tuple[list[str], dict]:
     """One authoring call proposing up to ~60 candidates. Returns (candidates, usage)."""
     system = AUTHOR_SYSTEM.format(banned=", ".join(ORDINAL_LEAK_HINTS[:18]) + ", ...")
@@ -139,7 +152,8 @@ def author_event_predicates(
     if existing:
         sample = existing[-80:]
         avoid = "\nAlready have (do NOT repeat or closely paraphrase):\n" + json.dumps(sample)
-    user = f"Propose {min(n, 60)} new candidate predicates.{avoid}"
+    theme_line = f" Draw mostly from this domain: {theme}." if theme else ""
+    user = f"Propose {min(n, 60)} new candidate predicates.{theme_line}{avoid}"
     content, usage = _request(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         model=model, temperature=temperature,

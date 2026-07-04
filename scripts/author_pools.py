@@ -51,8 +51,9 @@ def main() -> None:
 
     calls = 0
     while len(kept) < target and calls < args.max_author_calls:
+        theme = la.AUTHOR_THEMES[calls % len(la.AUTHOR_THEMES)]
         calls += 1
-        cands, u = la.author_event_predicates(60, cfg["author_model"], existing=kept)
+        cands, u = la.author_event_predicates(60, cfg["author_model"], existing=kept, theme=theme)
         add_usage(u)
         fresh = [c for c in dict.fromkeys(cands) if c not in kept]
         pre = la.cheap_local_screen(fresh)
