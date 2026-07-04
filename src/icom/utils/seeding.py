@@ -10,8 +10,8 @@ import numpy as np
 
 
 def child_seed(root_seed: int, *keys) -> int:
-    h = hashlib.sha256(f"{root_seed}|" + "|".join(map(str, keys)).encode().hex().encode())
-    return int.from_bytes(h.digest()[:8], "big")
+    payload = f"{root_seed}|" + "|".join(map(str, keys))
+    return int.from_bytes(hashlib.sha256(payload.encode()).digest()[:8], "big")
 
 
 def rng_for(root_seed: int, *keys) -> np.random.Generator:
