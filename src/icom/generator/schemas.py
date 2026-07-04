@@ -44,12 +44,15 @@ class QuestionFamily(str, Enum):
 @dataclass(frozen=True)
 class Card:
     """One event card. `latent_rank` is ground truth; `presentation_slot` is
-    where the card actually appears in the prompt (1-indexed)."""
+    where the card actually appears in the prompt (1-indexed). RELATIONAL
+    cards state an adjacent pair — `entity` is the earlier one (whose rank is
+    `latent_rank`) and `entity_b` the later; other families have entity_b=None."""
 
     entity: str
     text: str
     latent_rank: int
     presentation_slot: int
+    entity_b: str | None = None
 
 
 @dataclass
@@ -60,7 +63,9 @@ class Stimulus:
     seed: int
     cards: list[Card]
     prompt: str
+    content_key: str = ""  # shared across the 4 conditions of one latent order
     latent_order: list[str] = field(default_factory=list)  # entities, rank 1..N
+    markers: dict = field(default_factory=dict)  # entity -> marker string (dated/tagged)
 
     @property
     def stimulus_id(self) -> str:
@@ -74,6 +79,7 @@ class Stimulus:
 @dataclass(frozen=True)
 class Question:
     stimulus_content_key: str  # shared across conditions of the same latent order
+    qid: str
     family: QuestionFamily
     text: str
     answer_key: str | list[str]
@@ -81,6 +87,7 @@ class Question:
     rank_distance: int | None = None   # pairwise: |rank(A) - rank(B)|
     is_endpoint: bool | None = None    # adjacency/rank: anchors behave differently
     span_location: str | None = None   # span: start / middle / end
+    target_entities: tuple = ()        # entities the question is about
 
 
 @dataclass

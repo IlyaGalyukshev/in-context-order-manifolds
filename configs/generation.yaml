@@ -16,6 +16,10 @@ entities:
   vocab_size: 500
   max_tokens_per_name: 3         # enforced per tokenizer in the roster
 
+pools:                           # committed artifacts the generator samples from
+  predicates: data/pools/event_predicates_v1.json
+  entities: data/pools/entities_v1.json
+
 questions:
   reconstruction_per_stimulus: 1
   pairwise_per_distance_bin: 3
