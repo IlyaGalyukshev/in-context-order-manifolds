@@ -30,6 +30,7 @@ gpu = [
     "accelerate>=0.30",
     "datasets>=2.19",
 ]
+llm = ["openai>=1.30", "python-dotenv>=1.0"]  # generator/llm_assist.py (OpenRouter)
 topology = ["ripser>=0.6", "persim>=0.3"]
 viz = ["matplotlib>=3.8", "seaborn>=0.13"]
 dev = ["pytest>=8", "ruff>=0.4"]

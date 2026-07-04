@@ -23,3 +23,16 @@ questions:
   adjacency_max: 10
   rank_max: 10
   span_locations: [start, middle, end]
+
+llm_assist:
+  # Offline pool authoring via OpenRouter (generator/llm_assist.py). Outputs
+  # are cached in data/pools/ and committed; the per-stimulus path stays
+  # deterministic and never calls an API. Key budget is shared — check
+  # remaining credit before large authoring runs.
+  enabled: false
+  api_key_env: OPENROUTER_API_KEY
+  base_url_env: OPENROUTER_BASE_URL
+  proxy_env: OPENROUTER_PROXY
+  author_model: anthropic/claude-sonnet-4.5
+  reviewer_model: openai/gpt-5-mini
+  predicate_pool_size: 400
