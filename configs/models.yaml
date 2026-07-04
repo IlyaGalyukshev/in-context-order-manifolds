@@ -1,0 +1,20 @@
+# Model roster. V100 fleet (SM 7.0): dtype must be float16, attention eager.
+# Gemma-2 excluded by default — fp16-fragile on Volta (logit soft-capping overflow).
+defaults: &v100
+  dtype: float16
+  attn_implementation: eager
+  device_map: auto
+
+models:
+  pythia-1.4b:   { hf_id: EleutherAI/pythia-1.4b,               <<: *v100, checkpoints: true }
+  pythia-2.8b:   { hf_id: EleutherAI/pythia-2.8b,               <<: *v100, checkpoints: true }
+  llama-3.2-1b:  { hf_id: meta-llama/Llama-3.2-1B-Instruct,     <<: *v100 }
+  llama-3.2-3b:  { hf_id: meta-llama/Llama-3.2-3B-Instruct,     <<: *v100 }
+  llama-3.1-8b:  { hf_id: meta-llama/Llama-3.1-8B-Instruct,     <<: *v100 }
+  qwen2.5-1.5b:  { hf_id: Qwen/Qwen2.5-1.5B-Instruct,           <<: *v100 }
+  qwen2.5-7b:    { hf_id: Qwen/Qwen2.5-7B-Instruct,             <<: *v100 }
+  qwen2.5-14b:   { hf_id: Qwen/Qwen2.5-14B-Instruct,            <<: *v100, note: "short ctx on 1 GPU; else TP=2" }
+
+# Behavioral-only, one-off overnight run (vLLM v0.6.6, fp16, TP=8):
+confirmatory:
+  llama-3.1-70b: { hf_id: meta-llama/Llama-3.1-70B-Instruct, dtype: float16, tensor_parallel: 8 }

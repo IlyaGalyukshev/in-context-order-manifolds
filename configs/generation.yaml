@@ -1,0 +1,25 @@
+# Dataset generation. Deterministic from this file + seed.
+seed: 20260704
+
+families: [dated, tagged, relational]
+conditions: [forward, reverse, shuffle, posctl]
+
+n_items_grid: [8, 16, 32]        # 48 added after pilot cost measurement
+stimuli_per_cell: 300            # per (family × N); all 4 conditions share content
+holdout_fraction: 0.2            # latent orders reserved for layer selection ONLY
+
+surface:
+  fixed_width_markers: true      # "Day 03", "Tag 07" — constant token length
+  drop_day_of_week: true         # deterministic function of date; a second axis the
+                                 # model can compute instead of reading order
+entities:
+  vocab_size: 500
+  max_tokens_per_name: 3         # enforced per tokenizer in the roster
+
+questions:
+  reconstruction_per_stimulus: 1
+  pairwise_per_distance_bin: 3
+  distance_bins: [1, 2-3, 4-7, 8+]
+  adjacency_max: 10
+  rank_max: 10
+  span_locations: [start, middle, end]

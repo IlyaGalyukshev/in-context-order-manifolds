@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "icom"
+version = "0.1.0"
+description = "In-context order manifolds: the geometry of novel ordered sequences in LLM activations"
+authors = [{ name = "Ilya Galyukshev", email = "galyukshev.ilya@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "statsmodels>=0.14",
+    "pyyaml>=6",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+# GPU workers are V100 (SM 7.0): torch must be a cu121 build; fp16 only, eager attention.
+gpu = [
+    "torch>=2.1,<2.5",
+    "transformers>=4.44",
+    "accelerate>=0.30",
+    "datasets>=2.19",
+]
+battery = ["openai>=1.30"]        # client for the vLLM OpenAI-compatible server
+topology = ["ripser>=0.6", "persim>=0.3"]
+viz = ["matplotlib>=3.8", "seaborn>=0.13"]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

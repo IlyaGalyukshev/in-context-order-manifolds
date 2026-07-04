@@ -1,0 +1,16 @@
+# Stage 0 pilot: end-to-end smoke test + per-stimulus cost measurement.
+# Goal is NOT results — it is (a) pipeline works, (b) grid sizing numbers,
+# (c) first look at the identifiability test (partial rho in Shuffle).
+models: [pythia-2.8b, llama-3.2-3b]
+families: [tagged, relational]
+conditions: [forward, reverse, shuffle]
+n_items_grid: [16]
+stimuli_per_cell: 50
+pooling_schemes: [name, marker, last_token, card_mean]
+layers: all
+attention_entropy_subsample: 0.2
+paths:
+  data: /workspace/manifolds/data/pilot
+  acts: /workspace/manifolds/acts/pilot
+  results: /workspace/manifolds/results/pilot
+vllm_base_url: http://localhost:8901/v1
