@@ -107,12 +107,16 @@ def smoke_model(name: str, spec: dict, out_dir: Path) -> dict:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     hf_id = spec["hf_id"]
-    is_instruct = ("Instruct" in hf_id) or ("instruct" in spec.get("role", ""))
     is_qwen3 = "Qwen3" in hf_id
     rec: dict = {"model": name, "hf_id": hf_id}
     print(f"\n=== {name} ({hf_id}) ===", flush=True)
 
     tok = AutoTokenizer.from_pretrained(hf_id)
+    # Chat-format unless the roster explicitly marks the model as a base model.
+    # Substring checks on hf_id are NOT reliable (Qwen/Qwen3-1.7B is a chat
+    # model with no "Instruct" suffix) — this exact bug was caught in pilot.
+    is_instruct = spec.get("role", "instruct") != "base" and tok.chat_template is not None
+    rec["chat_formatted"] = is_instruct
     rec["nonce_token_counts"] = {
         w: len(tok(w, add_special_tokens=False)["input_ids"]) for w in NONCE_WORDS
     }

@@ -23,10 +23,10 @@ models:
   # Scale axis: Qwen3 dense (standard GQA+RoPE softmax attention — the hybrid
   # designs only start with Qwen3-Next/3.5), Apache 2.0, ungated.
   # Battery runs with enable_thinking=false in the chat template.
-  qwen3-1.7b: { hf_id: Qwen/Qwen3-1.7B, <<: *v100 }
-  qwen3-4b:   { hf_id: Qwen/Qwen3-4B,   <<: *v100 }
-  qwen3-8b:   { hf_id: Qwen/Qwen3-8B,   <<: *v100 }
-  qwen3-14b:  { hf_id: Qwen/Qwen3-14B,  <<: *v100, note: "1 GPU at short ctx; else 2" }
+  qwen3-1.7b: { hf_id: Qwen/Qwen3-1.7B, <<: *v100, role: instruct }
+  qwen3-4b:   { hf_id: Qwen/Qwen3-4B,   <<: *v100, role: instruct }
+  qwen3-8b:   { hf_id: Qwen/Qwen3-8B,   <<: *v100, role: instruct }
+  qwen3-14b:  { hf_id: Qwen/Qwen3-14B,  <<: *v100, role: instruct, note: "1 GPU at short ctx; else 2" }
 
   # Small fully-open point; NoPE-interleaved layers (every 4th layer has no
   # positional encoding) — an interesting contrast for the position-confound
