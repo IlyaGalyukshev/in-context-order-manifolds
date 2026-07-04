@@ -41,9 +41,12 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    kept: list[str] = []
+    ckpt = out / "pool_checkpoint.json"
+    kept: list[str] = json.loads(ckpt.read_text())["kept"] if ckpt.exists() else []
     all_verdicts: list[dict] = []
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0}
+    if kept:
+        print(f"resuming from checkpoint: {len(kept)} predicates", flush=True)
 
     def add_usage(u: dict) -> None:
         usage_total["prompt_tokens"] += u.get("prompt_tokens", 0)
@@ -66,6 +69,7 @@ def main() -> None:
         kept.extend(p for p in approved if p not in kept)
         rej = len(pre) - len(approved)
         print(f"[round {calls}] supervisor kept {len(approved)}, rejected {rej} → pool={len(kept)}", flush=True)
+        ckpt.write_text(json.dumps({"kept": kept}))
 
     # tokenizer screen on all roster tokenizers
     from transformers import AutoTokenizer

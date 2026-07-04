@@ -110,10 +110,19 @@ def _request(messages: list[dict], model: str, temperature: float, max_tokens: i
     last_err: Exception | None = None
     for attempt in range(4):
         try:
-            resp = json.load(opener.open(req, timeout=180))
+            resp = json.load(opener.open(req, timeout=240))
             if "error" in resp:
                 raise RuntimeError(f"OpenRouter error: {resp['error']}")
-            return resp["choices"][0]["message"]["content"], resp.get("usage", {})
+            choice = resp["choices"][0]
+            content = choice["message"].get("content")
+            if not content:
+                # Reasoning models can burn max_tokens on thinking and return
+                # empty content; also seen as a transient. Retry, with context.
+                raise RuntimeError(
+                    f"empty content (finish_reason={choice.get('finish_reason')}, "
+                    f"usage={resp.get('usage')})"
+                )
+            return content, resp.get("usage", {})
         except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
             last_err = e
             time.sleep(3 * (attempt + 1))
@@ -156,7 +165,7 @@ def author_event_predicates(
     user = f"Propose {min(n, 60)} new candidate predicates.{theme_line}{avoid}"
     content, usage = _request(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        model=model, temperature=temperature,
+        model=model, temperature=temperature, max_tokens=8000,
     )
     cands = [str(p).strip().lower().rstrip(".") for p in _extract_json(content)]
     return [c for c in cands if 2 <= len(c.split()) <= 5], usage
@@ -169,7 +178,7 @@ def review_pool(candidates: list[str], model: str) -> tuple[list[str], list[dict
             {"role": "system", "content": REVIEWER_SYSTEM},
             {"role": "user", "content": json.dumps(candidates)},
         ],
-        model=model, temperature=0.0,
+        model=model, temperature=0.0, max_tokens=16000,
     )
     verdicts = _extract_json(content)
     kept = [v["p"] for v in verdicts if v.get("keep")]
