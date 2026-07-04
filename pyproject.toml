@@ -19,6 +19,7 @@ dependencies = [
     "statsmodels>=0.14",
     "pyyaml>=6",
     "tqdm>=4.65",
+    "wordfreq>=3.0",   # real-word screen for nonce entities
 ]
 
 [project.optional-dependencies]

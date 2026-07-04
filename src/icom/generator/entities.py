@@ -32,6 +32,18 @@ BLOCKLIST = {
 }
 
 
+def _is_real_word(name: str) -> bool:
+    """Frequency-based screen against real English words (wordfreq required).
+
+    The hand-curated BLOCKLIST proved insufficient in pilot ('stanch' slipped
+    through) — a real word carries pretrained associations, which poisons the
+    novelty guarantee. Zipf > 1.5 ≈ appears in real text at all.
+    """
+    from wordfreq import zipf_frequency
+
+    return zipf_frequency(name, "en") > 1.5
+
+
 def build_vocabulary(seed: int, size: int = 500) -> list[str]:
     """Generate `size` unique nonce names, deterministic from `seed`."""
     rng = np.random.default_rng(seed)
@@ -43,6 +55,8 @@ def build_vocabulary(seed: int, size: int = 500) -> list[str]:
             break
         name = rng.choice(ONSETS) + rng.choice(NUCLEI) + rng.choice(CODAS)
         if name in seen or name in BLOCKLIST or len(name) < 4 or len(name) > 10:
+            continue
+        if _is_real_word(name):
             continue
         seen.add(name)
         out.append(name)
