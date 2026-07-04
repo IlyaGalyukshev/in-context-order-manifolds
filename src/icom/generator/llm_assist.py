@@ -52,12 +52,23 @@ Return ONLY a JSON array of strings, no commentary."""
 
 REVIEWER_SYSTEM = """You are the adversarial supervisor screening event predicates
 for a benchmark that measures whether language models infer ORDER purely from
-context. A predicate is POISON if its meaning hints at position in a sequence:
-temporal/ordinal words, reaction-to-prior-event verbs (replied, echoed, returned),
-growth/decay/aging, completion/initiation, repetition, novelty/finality — or if it
-references real entities, numbers, or is not a 2-5 word past-tense verb phrase.
+context. REJECT a predicate only for these specific poisons:
 
-Be strict: when in doubt, reject. Return ONLY a JSON array of objects:
+1. Temporal/ordinal vocabulary (first, next, then, again, final, early, ...).
+2. Verbs whose meaning REQUIRES a prior event in a sequence: replied, responded,
+   echoed, returned, resumed, repeated, followed, countered.
+3. Growth/decay/aging/novelty semantics (grew, aged, renewed, decayed).
+4. Explicit sequence-position words (began, initiated, concluded, finalized).
+   Ordinary telic verbs are FINE: sealed, polished, welded, closed are all OK —
+   completing a private action does not hint at list position.
+5. PROPER nouns: named people, places, brands, products. Common nouns
+   (spindle, membrane, vibration, bracket) are perfectly acceptable and expected.
+6. Numbers or counts in any form.
+7. Not a 2-5 word past-tense verb phrase, or contains pronouns, or references
+   another entity in the list ("the other", "another").
+
+Do not invent new rejection categories. When a case is genuinely ambiguous on
+rules 1-4, reject; otherwise keep. Return ONLY a JSON array of objects:
 [{"p": "<predicate>", "keep": true|false, "reason": "<short>"}]"""
 
 
