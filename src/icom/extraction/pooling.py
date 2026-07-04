@@ -46,7 +46,8 @@ def build_spans(prompt: str, stimulus: dict, offsets: list[tuple[int, int]]) -> 
         lo, hi = card_pos[primary["text"]]
 
         name_toks: list[int] = []
-        for m in re.finditer(rf"\bthe {re.escape(e)}\b", prompt):
+        # [Tt]he: relational cards open with capitalized "The <entity> ..."
+        for m in re.finditer(rf"\b[Tt]he {re.escape(e)}\b", prompt):
             name_toks += _tokens_in_span(offsets, m.start() + 4, m.end())
         card_toks = _tokens_in_span(offsets, lo, hi)
 
