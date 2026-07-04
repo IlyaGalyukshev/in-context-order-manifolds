@@ -18,9 +18,23 @@ must never break `generate_dataset.py`.
 Credentials: OPENROUTER_API_KEY / OPENROUTER_BASE_URL / OPENROUTER_PROXY from
 the environment or a local .env (see .env.example). On the DGX workspace the
 filled .env lives at /workspace/manifolds/.env.
+
+HARD RULE: every OpenRouter call goes through OPENROUTER_PROXY — no direct
+connections. `_client()` must raise if the proxy is unset or empty rather
+than fall back to a direct call.
 """
 
 from __future__ import annotations
+
+
+def _client():
+    """OpenAI-compatible client for OpenRouter, proxy-enforced.
+
+    Raises RuntimeError if OPENROUTER_PROXY is unset/empty — a direct call is
+    a bug, not a fallback. Route via httpx.Client(proxy=...) passed to the
+    OpenAI SDK's http_client.
+    """
+    raise NotImplementedError
 
 
 def author_event_predicates(n: int, model: str, seed_prompt_version: str) -> list[str]:
