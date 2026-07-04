@@ -1,20 +1,55 @@
-# Model roster. V100 fleet (SM 7.0): dtype must be float16, attention eager.
-# Gemma-2 excluded by default — fp16-fragile on Volta (logit soft-capping overflow).
+# Model roster — modern open-weight, V100-compatible (updated 2026-07).
+#
+# V100 fleet (SM 7.0) hard constraints:
+#   - fp16 only (no bf16 in hardware); every model gets a day-1 fp16-vs-fp32
+#     logit-KL smoke test before entering the grid
+#   - eager/SDPA attention (no FlashAttention)
+#   - torch < 2.7 / cu126 wheels at newest (PyTorch drops Volta from cu128+ builds)
+#   - modern vLLM dropped Volta entirely → the battery runs through the in-repo
+#     HF prefix-cache runner (src/icom/battery), no inference server needed.
 defaults: &v100
   dtype: float16
   attn_implementation: eager
   device_map: auto
 
 models:
-  pythia-1.4b:   { hf_id: EleutherAI/pythia-1.4b,               <<: *v100, checkpoints: true }
-  pythia-2.8b:   { hf_id: EleutherAI/pythia-2.8b,               <<: *v100, checkpoints: true }
-  llama-3.2-1b:  { hf_id: meta-llama/Llama-3.2-1B-Instruct,     <<: *v100 }
-  llama-3.2-3b:  { hf_id: meta-llama/Llama-3.2-3B-Instruct,     <<: *v100 }
-  llama-3.1-8b:  { hf_id: meta-llama/Llama-3.1-8B-Instruct,     <<: *v100 }
-  qwen2.5-1.5b:  { hf_id: Qwen/Qwen2.5-1.5B-Instruct,           <<: *v100 }
-  qwen2.5-7b:    { hf_id: Qwen/Qwen2.5-7B-Instruct,             <<: *v100 }
-  qwen2.5-14b:   { hf_id: Qwen/Qwen2.5-14B-Instruct,            <<: *v100, note: "short ctx on 1 GPU; else TP=2" }
+  # Flagship interpretability model: fully open (data + code + every training
+  # stage), standard transformer, ungated, Apache 2.0. Checkpoint revisions
+  # (e.g. stage1-step10000) give Track E developmental analyses for free,
+  # and the open pretraining data lets us verify nonce-entity novelty.
+  olmo3-7b:      { hf_id: allenai/Olmo-3-1025-7B,     <<: *v100, checkpoints: true, role: base }
+  olmo3-7b-inst: { hf_id: allenai/Olmo-3-7B-Instruct, <<: *v100, role: instruct }
 
-# Behavioral-only, one-off overnight run (vLLM v0.6.6, fp16, TP=8):
+  # Scale axis: Qwen3 dense (standard GQA+RoPE softmax attention — the hybrid
+  # designs only start with Qwen3-Next/3.5), Apache 2.0, ungated.
+  # Battery runs with enable_thinking=false in the chat template.
+  qwen3-1.7b: { hf_id: Qwen/Qwen3-1.7B, <<: *v100 }
+  qwen3-4b:   { hf_id: Qwen/Qwen3-4B,   <<: *v100 }
+  qwen3-8b:   { hf_id: Qwen/Qwen3-8B,   <<: *v100 }
+  qwen3-14b:  { hf_id: Qwen/Qwen3-14B,  <<: *v100, note: "1 GPU at short ctx; else 2" }
+
+  # Small fully-open point; NoPE-interleaved layers (every 4th layer has no
+  # positional encoding) — an interesting contrast for the position-confound
+  # analyses. Optional.
+  smollm3-3b: { hf_id: HuggingFaceTB/SmolLM3-3B, <<: *v100, optional: true }
+
+# Scale-up confirmation. 32B fp16 = ~64GB weights → extraction feasible across
+# 3× V100-32GB with device_map (replaces the old "quantized 70B" idea: fully
+# open, ungated, and activations are accessible, not just behavior).
 confirmatory:
-  llama-3.1-70b: { hf_id: meta-llama/Llama-3.1-70B-Instruct, dtype: float16, tensor_parallel: 8 }
+  olmo3-32b: { hf_id: allenai/Olmo-3-1125-32B, dtype: float16, gpus: 3, checkpoints: true }
+
+# Architecture contrast (exploratory): hybrid linear-attention models. Verify
+# Gated-DeltaNet/FLA kernels actually run on SM 7.0 (likely eager-fallback,
+# extraction-only) before committing any track to these.
+exploratory:
+  olmo-hybrid-7b: { hf_id: allenai/Olmo-Hybrid-7B, dtype: float16, note: "matched hybrid sibling of olmo3-7b — same lab/data" }
+  qwen3.5-9b:     { hf_id: Qwen/Qwen3.5-9B,        dtype: float16, note: "hybrid GDN family; hf_id to re-verify" }
+
+# Excluded, with reasons:
+#   gemma-3   — bf16-trained with fp16-overflow history; V100 has no bf16; gated license
+#   llama-3/4 — gated (needs HF token); 4.x is MoE and oversized for extraction
+#   phi-4     — standard+MIT but adds nothing over qwen3-14b on this grid
+#   pythia / qwen2.5 / llama-3.x — superseded: olmo3 covers checkpoints, qwen3 covers scale
+#   (qwen2.5-3b/7b/14b remain fully cached on the NFS workspace — free legacy
+#    fallback if a sanity baseline is ever needed)

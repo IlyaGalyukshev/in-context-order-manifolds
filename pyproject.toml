@@ -22,14 +22,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# GPU workers are V100 (SM 7.0): torch must be a cu121 build; fp16 only, eager attention.
+# GPU workers are V100 (SM 7.0): cu121/cu126 wheels only (Volta is dropped from
+# cu128+ builds); fp16 only, eager attention. transformers>=4.57 for OLMo-3.
 gpu = [
-    "torch>=2.1,<2.5",
-    "transformers>=4.44",
+    "torch>=2.4,<2.7",
+    "transformers>=4.57",
     "accelerate>=0.30",
     "datasets>=2.19",
 ]
-battery = ["openai>=1.30"]        # client for the vLLM OpenAI-compatible server
 topology = ["ripser>=0.6", "persim>=0.3"]
 viz = ["matplotlib>=3.8", "seaborn>=0.13"]
 dev = ["pytest>=8", "ruff>=0.4"]

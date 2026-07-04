@@ -48,8 +48,8 @@ Nobody has tested whether a clean **ordered 1D manifold** forms for a **novel in
 │   │   ├── stimuli.py         #   3 families × 4 conditions, fixed token budgets
 │   │   ├── questions.py       #   5 question families with deterministic answer keys
 │   │   └── schemas.py         #   dataclasses: the single source of truth for records
-│   ├── battery/               # behavioral evaluation via a vLLM OpenAI-compatible server
-│   │   ├── client.py          #   prefix-cache-friendly batched client
+│   ├── battery/               # behavioral evaluation (HF runner, prefix KV-cache reuse)
+│   │   ├── client.py          #   encode card-block once, answer all questions from cached KV
 │   │   ├── scoring.py         #   parsers, exact match, tau, distance bins, logit scoring
 │   │   └── run.py
 │   ├── extraction/            # activation capture (HF hooks), pooling on the fly
@@ -92,22 +92,27 @@ Every results row carries `git_sha, model, layer, pooling, family, condition, N,
 ## Setup
 
 ```bash
-pip install -e ".[dev]"           # generator + geometry + stats (CPU-only, runs anywhere)
-pip install -e ".[gpu,battery]"   # + extraction and battery client (on GPU workers)
+pip install -e ".[dev]"   # generator + geometry + stats (CPU-only, runs anywhere)
+pip install -e ".[gpu]"   # + extraction and battery (on GPU workers)
 ```
 
-**GPU workers.** The reference fleet is two 8× V100-SXM2-32GB nodes. V100 (SM 7.0) implies hard constraints baked into the configs: **fp16 only** (no bfloat16), **eager/SDPA attention** (no FlashAttention), no fast int4 kernels. Behavioral batteries run against `vllm/vllm-openai:v0.6.6` (last line with solid Volta support) with `--enable-prefix-caching` — all questions share the card-block prefix, so cache hit rates are high. Activation extraction uses plain HF forward hooks and stores only pooled `[N_items × layers × D]` fp16 tensors (~MBs per stimulus).
+**GPU workers.** The reference fleet is two 8× V100-SXM2-32GB nodes. V100 (SM 7.0) implies hard constraints baked into the configs: **fp16 only** (no bfloat16; every model passes an fp16-vs-fp32 logit-KL smoke test before entering the grid), **eager/SDPA attention** (no FlashAttention), and **torch < 2.7 / cu126 wheels** (PyTorch drops Volta from cu128+ builds). Modern vLLM has no Volta support at all, so the behavioral battery runs on plain transformers with manual prefix KV-cache reuse: the card-block prefix is encoded once per stimulus and all ~25 questions are answered from the cached `past_key_values`. Activation extraction uses plain HF forward hooks and stores only pooled `[N_items × layers × D]` fp16 tensors (~MBs per stimulus).
 
-**Model roster** (`configs/models.yaml`): Pythia-1.4B/2.8B (checkpoints available for developmental analyses), Llama-3.2-1B/3B, Llama-3.1-8B, Qwen2.5-1.5B/7B/14B. Gemma-2 is excluded by default (fp16-fragile on Volta).
+**Model roster** (`configs/models.yaml`):
+- **OLMo-3-7B** (Base + Instruct) — flagship: standard transformer, Apache 2.0, ungated, **fully open training data** (nonce-novelty verifiable) and **intermediate checkpoints at every stage** (developmental Track E for free); OLMo-3-32B for scale-up confirmation with activations, across 3 GPUs.
+- **Qwen3 dense 1.7B / 4B / 8B / 14B** — the scale axis: standard GQA+RoPE attention (the hybrid designs only begin with Qwen3-Next/3.5), Apache 2.0, ungated; battery runs with `enable_thinking=false`.
+- **SmolLM3-3B** (optional) — fully open, NoPE-interleaved layers: a natural contrast case for the position-confound analyses.
+- **Exploratory architecture contrast**: Olmo-Hybrid-7B and Qwen3.5-9B (hybrid Gated-DeltaNet families) — only if their kernels run on SM 7.0.
+- Excluded: Gemma-3 (bf16-trained, fp16-overflow history, gated), Llama-3/4 (gated; 4.x MoE), Pythia/Qwen2.5 (superseded by OLMo-3 and Qwen3 respectively).
 
 ## Roadmap
 
 - [x] Research plan, critique pass, hardware audit
-- [ ] **Stage 0** — generator (3 families × 4 conditions), analysis library, end-to-end pilot on Pythia-2.8B + Llama-3.2-3B
+- [ ] **Stage 0** — generator (3 families × 4 conditions), analysis library, end-to-end pilot on OLMo-3-7B-Instruct + Qwen3-4B
 - [ ] **Stage 1** — identifiability test (does content-order signal survive position removal in Shuffle?) + behavioral replication of the sorted-vs-shuffled gap
 - [ ] **Stage 2** — Tracks A + B at full grid (3 models × 3 families × 4 conditions × 3 N × ~300 stimuli)
 - [ ] **Stage 3** — Track C steering with dose–response controls
-- [ ] **Stage 4** — scaling checks (14B; one-off 70B behavioral), write-up
+- [ ] **Stage 4** — scaling checks (Qwen3-14B; OLMo-3-32B with activations across 3 GPUs), write-up
 
 ## References (core)
 
