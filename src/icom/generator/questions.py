@@ -23,26 +23,44 @@ from icom.generator.schemas import Question, QuestionFamily, StimulusFamily
 from icom.utils.seeding import rng_for
 
 # Family-specific phrasing of the order relation.
+# Wording lessons from the pilot (hard-won, do not soften):
+# - pairwise is FORCED CHOICE, not yes/no: on yes/no both pilot models gave a
+#   near-constant polar answer (qwen ~88% "yes", olmo ~99% "no") regardless of
+#   token budget — the binary channel carried almost no signal.
+# - every question ends with a STRICT format clause ("Reply with only ... No
+#   explanation.") — the weak "Answer with..." let models narrate, which forced
+#   fragile parsing and truncation artifacts.
+# - recon disambiguates true order vs text order explicitly, and the battery
+#   pairs it with a MENTION-ORDER control twin, separating "can't reconstruct"
+#   from "read the question as text order".
 _WORDING = {
     StimulusFamily.DATED: {
-        "recon": "List all entities from earliest to latest.",
-        "pair": "Did the {a} event happen before the {b} event?",
+        "recon": ("The events above are listed in arbitrary order. List all entities in the true "
+                  "temporal order of their events, earliest first — this may differ from the "
+                  "order in the text."),
+        "recon_mention": "List all entities in the order they first appear in the text above, top to bottom.",
+        "pair": "Which event happened earlier: the {a} event or the {b} event?",
         "adj": "Which entity comes immediately after the {x} in time?",
         "rank_of": "Counting from the earliest event as position 1, what position is the {x}?",
         "at_rank": "Which entity had the {k}-th earliest event?",
-        "span": "List the three entities that come immediately after the {x}, earliest first.",
+        "span": "List the three entities that come immediately after the {x} in time, earliest first.",
     },
     StimulusFamily.TAGGED: {
-        "recon": "List all entities from the lowest tag to the highest tag.",
-        "pair": "Does the {a} have a lower tag than the {b}?",
+        "recon": ("The lines above are listed in arbitrary order. List all entities from the "
+                  "lowest tag to the highest tag — this may differ from the order in the text."),
+        "recon_mention": "List all entities in the order they first appear in the text above, top to bottom.",
+        "pair": "Which has the lower tag: the {a} or the {b}?",
         "adj": "Which entity has the next tag above the {x}?",
         "rank_of": "Counting from the lowest tag as position 1, what position is the {x}?",
         "at_rank": "Which entity has the {k}-th lowest tag?",
         "span": "List the three entities with the next tags above the {x}, lowest first.",
     },
     StimulusFamily.RELATIONAL: {
-        "recon": "List all entities from earliest to latest.",
-        "pair": "Did the {a} act before the {b}?",
+        "recon": ("The statements above are listed in arbitrary order. List all entities in the "
+                  "true order in which they acted, earliest first — this may differ from the "
+                  "order in the text."),
+        "recon_mention": "List all entities in the order they first appear in the text above, top to bottom.",
+        "pair": "Which acted earlier: the {a} or the {b}?",
         "adj": "Which entity acted immediately after the {x}?",
         "rank_of": "Counting from the earliest as position 1, what position is the {x}?",
         "at_rank": "Which entity acted {k}-th from the earliest?",
@@ -51,10 +69,10 @@ _WORDING = {
 }
 
 FORMAT_SUFFIX = {
-    "name": " Answer with only the entity name.",
-    "yesno": " Answer yes or no.",
-    "number": " Answer with only a number.",
-    "list": " Answer with one entity name per line.",
+    "name": " Reply with only the entity name. No explanation.",
+    "choice": " Reply with only one entity name. No explanation.",
+    "number": " Reply with only the number. No explanation.",
+    "list": " Reply with one entity name per line, nothing else.",
 }
 
 
@@ -95,11 +113,14 @@ def make_battery(
             family=qfam, text=text + FORMAT_SUFFIX[fmt], answer_key=key, **meta,
         ))
 
-    # 1. full reconstruction (global)
+    # 1. full reconstruction (global) + mention-order control twin
     add(QuestionFamily.RECONSTRUCTION, w["recon"], list(latent_order), "list",
         target_entities=tuple(latent_order))
+    add(QuestionFamily.RECONSTRUCTION, w["recon_mention"], "MENTION_ORDER", "list",
+        span_location="mention_control", target_entities=tuple(latent_order))
 
-    # 2. pairwise, stratified by rank distance, yes/no keys balanced per bin
+    # 2. pairwise forced-choice, stratified by rank distance; the earlier/later
+    # entity appears first in the question in alternation (position balance)
     for lo, hi in _parse_bins(list(distance_bins)):
         hi_eff = min(hi if hi is not None else n - 1, n - 1)
         dists = [d for d in range(lo, hi_eff + 1)]
@@ -109,10 +130,10 @@ def make_battery(
             d = int(rng.choice(dists))
             i = int(rng.integers(1, n - d + 1))          # earlier rank
             a, b = latent_order[i - 1], latent_order[i + d - 1]
-            if j % 2 == 1:                               # balance yes/no
+            key = a                                       # the earlier entity
+            if j % 2 == 1:                                # balance mention order
                 a, b = b, a
-            key = "yes" if rank_of[a] < rank_of[b] else "no"
-            add(QuestionFamily.PAIRWISE, w["pair"].format(a=a, b=b), key, "yesno",
+            add(QuestionFamily.PAIRWISE, w["pair"].format(a=a, b=b), key, "choice",
                 rank_distance=d, target_entities=(a, b))
 
     # 3. adjacency / successor (X with a successor; endpoints tagged)

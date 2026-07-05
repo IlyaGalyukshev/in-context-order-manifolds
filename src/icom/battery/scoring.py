@@ -52,7 +52,7 @@ def _extract_entities(text: str, vocab: list[str]) -> list[str]:
 
 
 def score_row(question: dict, completion: str, vocab: list[str],
-              logit_margin: float | None) -> dict:
+              logit_margin: float | None, mention_order: list[str] | None = None) -> dict:
     fam = question["family"]
     key = question["answer_key"]
     text = completion.strip()
@@ -67,11 +67,17 @@ def score_row(question: dict, completion: str, vocab: list[str],
         vocab = [e for e in vocab if e not in anchors]
 
     if fam == "pairwise":
-        pred = parse_yesno(text)
-        if pred is None:
-            r["parse_failed"] = True
-            return r
-        r["correct"] = pred == key
+        # forced choice: the answer is one of the two named candidates
+        cands = list(question.get("target_entities") or ())
+        ents = _extract_entities(text, cands)
+        if not ents:
+            pred = parse_yesno(text)  # legacy yes/no data
+            if pred is None:
+                r["parse_failed"] = True
+                return r
+            r["correct"] = pred == key
+        else:
+            r["correct"] = ents[0] == key
         r["score"] = float(r["correct"])
 
     elif fam in ("adjacency",) or (fam == "rank" and not str(key).isdigit()):
@@ -94,7 +100,10 @@ def score_row(question: dict, completion: str, vocab: list[str],
 
     elif fam in ("reconstruction", "span"):
         pred = _extract_entities(text, vocab)
-        gold = list(key)
+        # the mention-order control twin's key depends on the CONDITION
+        # (mention order differs per presentation), so it is computed at
+        # scoring time from the stimulus and passed in by the runner
+        gold = mention_order if str(key) == "MENTION_ORDER" else list(key)
         if not pred:
             r["parse_failed"] = True
             return r

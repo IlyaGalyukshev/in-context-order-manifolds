@@ -50,6 +50,23 @@ class BatteryRunner:
                 ids.append(t[0])
         return sorted(set(ids))
 
+    def _choice_margin(self, lp, a: str, b: str) -> float | None:
+        """logP(first token of a) − logP(first token of b), over both leading-
+        space and bare variants; shared first-tokens are dropped. None if the
+        candidates are indistinguishable at token 1."""
+        import torch
+
+        def firsts(name):
+            return {self.tok(v, add_special_tokens=False)["input_ids"][0]
+                    for v in (name, " " + name)}
+        fa, fb = firsts(a), firsts(b)
+        fa, fb = fa - fb, fb - fa
+        if not fa or not fb:
+            return None
+        pa = torch.logsumexp(lp[sorted(fa)], 0).item()
+        pb = torch.logsumexp(lp[sorted(fb)], 0).item()
+        return pa - pb
+
     def _format(self, card_block: str, question: str) -> str:
         user = card_block + "\n\n" + question
         if not self.is_instruct or self.tok.chat_template is None:
@@ -85,11 +102,15 @@ class BatteryRunner:
                 for j, q in enumerate(chunk):
                     margin = None
                     if family == "pairwise":
-                        logits = gen.scores[0][j].float()
-                        lp = torch.log_softmax(logits, -1)
-                        p_yes = torch.logsumexp(lp[self._yes_ids], 0).item()
-                        p_no = torch.logsumexp(lp[self._no_ids], 0).item()
-                        margin = p_yes - p_no
+                        lp = torch.log_softmax(gen.scores[0][j].float(), -1)
+                        cands = q.get("target_entities") or ()
+                        if len(cands) == 2:
+                            # forced choice: margin toward the FIRST-NAMED candidate
+                            margin = self._choice_margin(lp, cands[0], cands[1])
+                        if margin is None:  # legacy yes/no questions
+                            p_yes = torch.logsumexp(lp[self._yes_ids], 0).item()
+                            p_no = torch.logsumexp(lp[self._no_ids], 0).item()
+                            margin = p_yes - p_no
                     out.append({
                         "qid": q["qid"],
                         "completion": self.tok.decode(seqs[j], skip_special_tokens=True),

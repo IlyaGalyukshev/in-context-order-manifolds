@@ -68,7 +68,8 @@ def test_relational_family_needs_transitive_closure():
 
 
 def test_pairwise_distance_stratification():
-    """Pairwise questions meet the per-bin quota with correct distances."""
+    """Forced-choice pairwise: per-bin quotas, key = the earlier entity, and
+    the earlier entity is named first in ~half the questions (position balance)."""
     _, latent, key = _set(StimulusFamily.TAGGED)
     qs = make_battery(latent, key, StimulusFamily.TAGGED, SEED,
                       pairwise_per_bin=3, distance_bins=[1, "2-3", "4-7", "8+"])
@@ -81,11 +82,25 @@ def test_pairwise_distance_stratification():
                 bins[(lo, hi)] += 1
                 break
     assert all(v == 3 for v in bins.values()), bins
-    # keys balanced-ish and correct
     rank = {e: i + 1 for i, e in enumerate(latent)}
+    first_named_earlier = 0
     for q in pw:
         a, b = q.target_entities
-        assert q.answer_key == ("yes" if rank[a] < rank[b] else "no")
+        assert q.answer_key in (a, b)
+        assert q.answer_key == (a if rank[a] < rank[b] else b)
+        first_named_earlier += q.answer_key == a
+    assert 3 <= first_named_earlier <= 9, "position balance broken"
+
+
+def test_mention_order_control_twin():
+    """Recon has a mention-order control twin with the sentinel key — its true
+    key is condition-dependent and computed at scoring time."""
+    _, latent, key = _set(StimulusFamily.RELATIONAL)
+    qs = make_battery(latent, key, StimulusFamily.RELATIONAL, SEED)
+    recs = [q for q in qs if q.family is QuestionFamily.RECONSTRUCTION]
+    assert len(recs) == 2
+    assert any(q.answer_key == "MENTION_ORDER" for q in recs)
+    assert any(q.answer_key == latent for q in recs)
 
 
 def test_presentation_slots_recorded():

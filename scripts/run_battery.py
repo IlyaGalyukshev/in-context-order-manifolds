@@ -72,6 +72,13 @@ def main() -> None:
     runner = BatteryRunner(model, tok, is_instruct=spec.get("role", "instruct") != "base",
                            batch_size=args.batch_size, device=args.device)
 
+    import re as _re
+
+    def mention_order_of(st):
+        pos = {e: _re.search(rf"\b{_re.escape(e)}\b", st["prompt"]).start()
+               for e in st["latent_order"]}
+        return sorted(pos, key=pos.get)
+
     t0, n_done = time.monotonic(), 0
     with open(out_path, "a") as f:
         for st in stimuli:
@@ -80,10 +87,11 @@ def main() -> None:
             qs = questions[st["content_key"]]
             raws = runner.run_stimulus(st, qs)
             raw_by_qid = {r["qid"]: r for r in raws}
+            mention = mention_order_of(st)
             for q in qs:
                 raw = raw_by_qid[q["qid"]]
                 scored = score_row(q, raw["completion"], st["latent_order"],
-                                   raw["logit_margin"])
+                                   raw["logit_margin"], mention_order=mention)
                 f.write(json.dumps({
                     "stimulus_id": st["stimulus_id"], "content_key": st["content_key"],
                     "model": args.model, "family": st["family"],
