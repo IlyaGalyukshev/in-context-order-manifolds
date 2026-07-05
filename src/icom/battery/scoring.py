@@ -58,11 +58,13 @@ def score_row(question: dict, completion: str, vocab: list[str],
         r["score"] = float(r["correct"])
 
     elif fam == "rank":  # numeric subtype
-        m = re.search(r"\b(\d{1,3})\b", text)
-        if m is None:
+        # LAST integer: models narrate ("floane is Tag 35 ... so position 6")
+        # and conclude at the end; the first int is usually the tag value.
+        ints = re.findall(r"\b(\d{1,3})\b", text)
+        if not ints:
             r["parse_failed"] = True
             return r
-        r["correct"] = int(m.group(1)) == int(key)
+        r["correct"] = int(ints[-1]) == int(key)
         r["score"] = float(r["correct"])
 
     elif fam in ("reconstruction", "span"):

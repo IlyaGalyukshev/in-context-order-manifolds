@@ -21,9 +21,9 @@ import torch
 MAX_NEW_TOKENS = {
     "reconstruction": 160,
     "pairwise": 8,
-    "adjacency": 28,
-    "rank": 24,
-    "span": 56,
+    "adjacency": 48,
+    "rank": 96,     # models narrate ("The tag X is at position...") — let them finish
+    "span": 80,
 }
 
 YES_VARIANTS = ("yes", " yes", "Yes", " Yes", "YES")
