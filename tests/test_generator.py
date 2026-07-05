@@ -89,7 +89,10 @@ def test_pairwise_distance_stratification():
         assert q.answer_key in (a, b)
         assert q.answer_key == (a if rank[a] < rank[b] else b)
         first_named_earlier += q.answer_key == a
-    assert 3 <= first_named_earlier <= 9, "position balance broken"
+    # EXACT 50/50 position balance: "always pick first-named" must score chance.
+    # (A judge caught the old 2:1 alternation as a trivial-baseline confound.)
+    assert abs(first_named_earlier - len(pw) / 2) <= 0.5, \
+        f"position balance broken: earlier named first {first_named_earlier}/{len(pw)}"
 
 
 def test_mention_order_control_twin():

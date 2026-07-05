@@ -119,22 +119,28 @@ def make_battery(
     add(QuestionFamily.RECONSTRUCTION, w["recon_mention"], "MENTION_ORDER", "list",
         span_location="mention_control", target_entities=tuple(latent_order))
 
-    # 2. pairwise forced-choice, stratified by rank distance; the earlier/later
-    # entity appears first in the question in alternation (position balance)
+    # 2. pairwise forced-choice, stratified by rank distance. Candidate order
+    # is balanced EXACTLY 50/50 (earlier-named-first vs later-named-first) so a
+    # trivial "always pick the first-named" strategy scores chance, not 67%.
+    # (The previous per-bin j%2 alternation gave 2:1 at 3 questions/bin — a
+    # position-baseline confound a data-quality judge caught in the pilot.)
+    pw = []
     for lo, hi in _parse_bins(list(distance_bins)):
         hi_eff = min(hi if hi is not None else n - 1, n - 1)
         dists = [d for d in range(lo, hi_eff + 1)]
         if not dists:
             continue
-        for j in range(pairwise_per_bin):
+        for _ in range(pairwise_per_bin):
             d = int(rng.choice(dists))
-            i = int(rng.integers(1, n - d + 1))          # earlier rank
-            a, b = latent_order[i - 1], latent_order[i + d - 1]
-            key = a                                       # the earlier entity
-            if j % 2 == 1:                                # balance mention order
-                a, b = b, a
-            add(QuestionFamily.PAIRWISE, w["pair"].format(a=a, b=b), key, "choice",
-                rank_distance=d, target_entities=(a, b))
+            i = int(rng.integers(1, n - d + 1))          # earlier rank position
+            pw.append((latent_order[i - 1], latent_order[i + d - 1], d))
+    half = len(pw) // 2
+    swap = np.array([False] * (len(pw) - half) + [True] * half)
+    rng.shuffle(swap)                                    # exactly half swapped
+    for (earlier, later, d), sw in zip(pw, swap):
+        a, b = (later, earlier) if sw else (earlier, later)
+        add(QuestionFamily.PAIRWISE, w["pair"].format(a=a, b=b), earlier, "choice",
+            rank_distance=d, target_entities=(a, b))
 
     # 3. adjacency / successor (X with a successor; endpoints tagged)
     xs = rng.choice(n - 1, size=min(adjacency_max, n - 1), replace=False)
