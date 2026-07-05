@@ -17,6 +17,10 @@ def fit_coordinate(points: np.ndarray) -> tuple[np.ndarray, dict]:
     """points [N, D] float → (coordinate [N], diagnostics)."""
     X = points.astype(np.float64)
     X = X - X.mean(axis=0)
+    norm = np.linalg.norm(X)
+    if norm < 1e-8 * X.shape[0]:  # all points (near-)identical → no geometry
+        return np.zeros(X.shape[0]), {"pc1_var_ratio": 0.0, "pc2_var_ratio": 0.0,
+                                      "degenerate_cloud": True}
     # PCA via SVD; PC1 projection is the coordinate
     U, S, Vt = np.linalg.svd(X, full_matrices=False)
     coord = X @ Vt[0]
@@ -24,5 +28,6 @@ def fit_coordinate(points: np.ndarray) -> tuple[np.ndarray, dict]:
     diag = {
         "pc1_var_ratio": float(var[0] / var.sum()),
         "pc2_var_ratio": float(var[1] / var.sum()) if len(var) > 1 else 0.0,
+        "degenerate_cloud": False,
     }
     return coord, diag

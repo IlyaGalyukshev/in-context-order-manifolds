@@ -19,31 +19,50 @@ import numpy as np
 
 
 def _rank(x: np.ndarray) -> np.ndarray:
-    return np.argsort(np.argsort(x)).astype(np.float64)
+    """Average ranks for ties. argsort-of-argsort assigns ARBITRARY distinct
+    ranks to tied values — with points stored in latent order that fabricated
+    perfect quality from degenerate (all-equal) coordinates in pilot."""
+    from scipy.stats import rankdata
+
+    return rankdata(x, method="average").astype(np.float64)
 
 
 def _pearson(a, b) -> float:
     a = a - a.mean(); b = b - b.mean()
     d = np.sqrt((a @ a) * (b @ b))
-    return float(a @ b / d) if d > 0 else 0.0
+    return float(a @ b / d) if d > 0 else float("nan")
 
 
 def partial_spearman(t, r, s) -> float:
-    """spearman(t, r) controlling s, via partial Pearson on ranks."""
+    """spearman(t, r) controlling s, via partial Pearson on ranks.
+    NaN (not 0) when undefined — e.g. forward/reverse where slot ≡ ±rank."""
+    if np.std(t) < 1e-12:
+        return float("nan")
     tr, rr, sr = _rank(t), _rank(r), _rank(s)
     r_tr, r_ts, r_rs = _pearson(tr, rr), _pearson(tr, sr), _pearson(rr, sr)
     den = np.sqrt((1 - r_ts**2) * (1 - r_rs**2))
-    return float((r_tr - r_ts * r_rs) / den) if den > 1e-9 else 0.0
+    return float((r_tr - r_ts * r_rs) / den) if den > 1e-9 else float("nan")
 
 
-def quality_readout(t: np.ndarray, ranks: np.ndarray, slots: np.ndarray) -> dict:
-    tr, rr, sr = _rank(t), _rank(ranks), _rank(slots)
-    return {
-        "rho_latent": _pearson(tr, rr),
-        "rho_position": _pearson(tr, sr),
-        "q_content_partial": partial_spearman(t, ranks, slots),
-        "q_position_partial": partial_spearman(t, slots, ranks),
-    }
+def quality_readout(t: np.ndarray, ranks: np.ndarray, slots: np.ndarray,
+                    null_seed: int | None = None) -> dict:
+    if np.std(t) < 1e-12:
+        base = {"rho_latent": float("nan"), "rho_position": float("nan"),
+                "q_content_partial": float("nan"), "q_position_partial": float("nan"),
+                "degenerate": True}
+    else:
+        tr, rr, sr = _rank(t), _rank(ranks), _rank(slots)
+        base = {
+            "rho_latent": _pearson(tr, rr),
+            "rho_position": _pearson(tr, sr),
+            "q_content_partial": partial_spearman(t, ranks, slots),
+            "q_position_partial": partial_spearman(t, slots, ranks),
+            "degenerate": False,
+        }
+    if null_seed is not None:
+        rng = np.random.default_rng(null_seed)
+        base["q_content_null"] = partial_spearman(t, rng.permutation(ranks), slots)
+    return base
 
 
 def bootstrap_sd(points: np.ndarray, ranks: np.ndarray, slots: np.ndarray,
