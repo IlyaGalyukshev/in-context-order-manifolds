@@ -33,6 +33,13 @@ def score_row(question: dict, completion: str, vocab: list[str],
     r: dict = {"parse_failed": False, "correct": None, "score": np.nan,
                "tau": np.nan, "coverage": np.nan, "exact_match": None}
 
+    # For anchored families the question names an anchor entity X that is
+    # never the answer; models echo it ("...above the glump is the...") and
+    # include it in span lists — exclude it from extraction.
+    if fam in ("adjacency", "span"):
+        anchors = set(question.get("target_entities") or ())
+        vocab = [e for e in vocab if e not in anchors]
+
     if fam == "pairwise":
         m = re.search(r"\b(yes|no)\b", text.lower())
         if m is None and logit_margin is None:

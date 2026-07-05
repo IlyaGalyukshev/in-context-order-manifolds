@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import torch
 
+# Sized for constrained answers PLUS the preamble models emit despite
+# instructions ("The tag 'floane' is at position ...") — pilot sanity showed
+# 8-12 tokens truncate before the payload and masquerade as parse failures.
 MAX_NEW_TOKENS = {
     "reconstruction": 160,
     "pairwise": 8,
-    "adjacency": 12,
-    "rank": 8,
+    "adjacency": 28,
+    "rank": 24,
     "span": 56,
 }
 
