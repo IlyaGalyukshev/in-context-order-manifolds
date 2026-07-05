@@ -25,12 +25,17 @@ def parse_yesno(text: str) -> str | None:
     rather yes") — validated against an eyeballed sample in the pilot."""
     t = re.sub(r"[*_#>`]+", " ", text.strip().lower())
     t = re.sub(r"\s+", " ", t).strip()
+    # strong conclusion ("the answer is X") overrides everything incl. a
+    # leading verdict — it captures explicit self-correction; last one wins
+    strong = re.findall(r"answer(?:\s+is)?[:,]?\s+(yes|no)\b", t)
+    if strong:
+        return strong[-1]
     m = re.match(r"^(yes|no)\b", t)
     if m:
         return m.group(1)
-    concl = re.findall(r"(?:answer(?:\s+is)?[:,]?|therefore[,:]?|thus[,:]?|so[,:])\s+(yes|no)\b", t)
-    if concl:
-        return concl[-1]
+    weak = re.findall(r"(?:therefore|thus|so)[,:]?\s+(yes|no)\b", t)
+    if weak:
+        return weak[-1]
     words = re.findall(r"\b(yes|no)\b", t)
     return words[-1] if words else None
 
