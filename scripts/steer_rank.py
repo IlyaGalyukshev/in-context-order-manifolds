@@ -92,9 +92,13 @@ def main():
     state = {"vec": None, "pos": None, "scale": 0.0}
 
     def hook(mod, inp, out):
-        if state["vec"] is None:
+        if state["vec"] is None or not state["pos"]:
             return out
         h = out[0] if isinstance(out, tuple) else out
+        # only the prompt forward contains these positions; skip KV-cached
+        # single-token generation steps (the steered prompt is already cached)
+        if h.shape[1] <= max(state["pos"]):
+            return out
         v = torch.tensor(state["vec"], device=h.device, dtype=h.dtype) * state["scale"]
         h[0, state["pos"], :] += v
         return (h,) + out[1:] if isinstance(out, tuple) else h
