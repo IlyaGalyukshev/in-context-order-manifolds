@@ -108,22 +108,23 @@ def main():
             : (2 if args.smoke else args.n_stim)]
         for s in pool:
             N = len(s["latent_order"])
-            X = s["latent_order"][N // 2]
-            true_rank = N // 2 + 1
-            prompt = (s["prompt"] + "\n\nCounting from the earliest as position 1, "
-                      f"the {X} is at position")
+            X = s["latent_order"][N // 2]      # mid-rank target (steered)
+            Y = s["latent_order"][0]           # earliest reference (rank 1)
+            # forced-choice pairwise, read first token of X vs Y after "Answer: the"
+            prompt = (s["prompt"] + f"\n\nWhich acted earlier: the {X} or the {Y}? Answer: the")
             full = tok.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False,
                 add_generation_prompt=True,
                 **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
             enc = tok(full, return_tensors="pt", add_special_tokens=False).to("cuda:0")
             S = enc["input_ids"].shape[1]
             lo, hi, offs = token_span(full, s["prompt"], tok)         # card-block token span
-            xpos = name_ids(full, X, tok, offs, lo, hi)                # X name tokens in the block
-            qspan = list(range(hi, S))                                 # question tokens
-            keep = set(xpos)
+            xpos = name_ids(full, X, tok, offs, lo, hi)
+            ypos = name_ids(full, Y, tok, offs, lo, hi)
+            qspan = list(range(hi, S))
+            keep = set(xpos) | set(ypos)                              # both candidates readable
             block_cols = [j for j in range(lo, hi) if j not in keep]
-            # number tokens 1..N (first token of " p")
-            num_ids = [tok(f" {p}", add_special_tokens=False)["input_ids"][0] for p in range(1, N + 1)]
+            x_id = tok(" " + X, add_special_tokens=False)["input_ids"][0]
+            y_id = tok(" " + Y, add_special_tokens=False)["input_ids"][0]
             base = torch.triu(torch.full((S, S), minval, device="cuda:0", dtype=dt), 1)
             knock = base.clone()
             for i in qspan:
@@ -134,34 +135,31 @@ def main():
                 for dname, vec, a in combos:
                     state.update(vec=vec, pos=xpos, scale=a * spread)
                     with torch.no_grad():
-                        logits = model(input_ids=enc["input_ids"], attention_mask=mask4d).logits[0, -1]
-                    p = torch.softmax(logits[num_ids].float(), 0).cpu().numpy()
-                    exp_pos = float((np.arange(1, N + 1) * p).sum())
-                    rows.append(dict(model=args.model, family=family, stim=s["stimulus_id"], target=X,
-                                     true_rank=true_rank, cond=cond, direction=dname, alpha=a,
-                                     exp_pos=round(exp_pos, 2), argmax=int(np.argmax(p) + 1),
-                                     p_true=round(float(p[true_rank - 1]), 3)))
+                        lg = model(input_ids=enc["input_ids"], attention_mask=mask4d).logits[0, -1].float()
+                    # margin toward X (says X earlier). X is truly later than Y,
+                    # so a correct model is negative; steering X earlier should raise it.
+                    margin_X = float(lg[x_id] - lg[y_id])
+                    rows.append(dict(model=args.model, family=family, stim=s["stimulus_id"],
+                                     target=X, ref=Y, cond=cond, direction=dname, alpha=a,
+                                     margin_x=round(margin_X, 3)))
                     state.update(vec=None)
         handle.remove()
 
     import pandas as pd
     df = pd.DataFrame(rows); df.to_parquet(args.out)
-    print("=== FULL attention (sanity: expected pos vs true rank) ===")
+    print("=== FULL attention sanity: margin toward X (X is truly LATER than Y -> expect < 0) ===")
     for fam, g in df[df.cond == "full"].groupby("family"):
-        from scipy.stats import spearmanr
-        rho = spearmanr(g["exp_pos"], g["true_rank"])[0]
-        print(f"  {fam:10s} spearman(exp_pos, true)={rho:+.2f} mean|exp-true|={np.mean(np.abs(g.exp_pos-g.true_rank)):.1f}")
-    print("=== KNOCKOUT dose-response: expected answered position vs alpha ===")
+        print(f"  {fam:10s} mean margin_X={g.margin_x.mean():+.2f}  (frac correct 'Y earlier': {(g.margin_x<0).mean():.2f})")
+    print("=== KNOCKOUT dose-response: margin toward X vs alpha (v increases rank; -alpha = X earlier) ===")
     for (fam, d), g in df[df.cond == "knock"].groupby(["family", "direction"]):
         line = f"  {fam:10s} {d:6s} | "
         for a in alphas:
-            line += f"a{a:+.0f}:exp={g[g.alpha==a]['exp_pos'].mean():.1f} "
+            line += f"a{a:+.0f}:m={g[g.alpha==a]['margin_x'].mean():+.2f} "
         print(line)
     if args.smoke:
-        print("\n=== smoke raw (true_rank, cond, dir, alpha, exp_pos, argmax) ===")
+        print("\n=== smoke raw ===")
         for r in rows:
-            print(f"  {r['family'][:3]} true={r['true_rank']} {r['cond']:5s} {r['direction']:6s} "
-                  f"a{r['alpha']:+.0f} exp={r['exp_pos']:.1f} argmax={r['argmax']}")
+            print(f"  {r['family'][:3]} {r['cond']:5s} {r['direction']:6s} a{r['alpha']:+.0f} margin_X={r['margin_x']:+.2f}")
     print(f"\nwrote -> {args.out}")
 
 
