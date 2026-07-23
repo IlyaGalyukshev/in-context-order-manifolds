@@ -63,7 +63,8 @@ def fit_probe(acts_dir, model, family, condition, layer, pca=64):
     v = grad / (np.linalg.norm(grad) + 1e-9)
     def probe(xraw):  # xraw [n, D] -> decoded norm rank
         return rg.predict(pc.transform(sc.transform(xraw)))
-    return v.astype(np.float32), probe, float(np.std(sc.transform(X) @ (grad / np.linalg.norm(grad)) ))
+    spread_raw = float(np.std(X @ v))  # natural std of RAW activations along the rank axis
+    return v.astype(np.float32), probe, spread_raw
 
 
 def main():
@@ -106,7 +107,7 @@ def main():
     rows = []
     for family in args.families.split(","):
         Ls = PEAK[(args.model, family)]
-        v_along, _, spread = fit_probe(args.acts, args.model, family, "shuffle", Ls)
+        v_along, probe_same, spread = fit_probe(args.acts, args.model, family, "shuffle", Ls)
         _, probe_last, _ = fit_probe(args.acts, args.model, family, "shuffle", n_layers)  # last-layer readout
         v_rand = rng.standard_normal(v_along.shape).astype(np.float32)
         v_rand /= np.linalg.norm(v_rand)
@@ -134,8 +135,11 @@ def main():
                     enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                     state.update(vec=vec, pos=pos, scale=a * spread)
                     with torch.no_grad():
-                        hs = model(**enc, output_hidden_states=True).hidden_states[n_layers][0]
-                    dec = float(probe_last(hs[pos].float().mean(0, keepdim=True).cpu().numpy())[0])
+                        allh = model(**enc, output_hidden_states=True).hidden_states
+                    pool_same = allh[Ls][0][pos].float().mean(0, keepdim=True).cpu().numpy()
+                    pool_last = allh[n_layers][0][pos].float().mean(0, keepdim=True).cpu().numpy()
+                    dec_same = float(probe_same(pool_same)[0])   # magnitude sanity (same layer)
+                    dec = float(probe_last(pool_last)[0])        # PROPAGATION to last layer
                     # (b) behaviour: generate the rank answer with same steering on the Q prompt
                     encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                     state.update(vec=vec, pos=qpos, scale=a * spread)
@@ -146,7 +150,7 @@ def main():
                     m = re.search(r"\d{1,3}", ans)
                     rows.append(dict(model=args.model, family=family, stim=s["stimulus_id"],
                                      target=target, true_rank=true_rank, direction=direction,
-                                     alpha=a, decoded_rank=round(dec, 3),
+                                     alpha=a, decoded_same=round(dec_same, 3), decoded_rank=round(dec, 3),
                                      answered=int(m.group()) if m else None, raw=ans.strip()[:20]))
                     state.update(vec=None)
         handle.remove()
@@ -154,14 +158,14 @@ def main():
     import pandas as pd
     pd.DataFrame(rows).to_parquet(args.out)
     df = pd.DataFrame(rows)
-    print("=== dose-response: mean over stimuli (decoded internal rank / answered rank) ===")
+    print("=== dose-response: same-layer decoded / last-layer decoded / answered rank ===")
     for (fam, d), g in df.groupby(["family", "direction"]):
         line = f"{fam:10s} {d:6s} | "
         for a in alphas:
             ga = g[g.alpha == a]
-            dec = ga["decoded_rank"].mean()
             ans = ga["answered"].dropna()
-            line += f"a{a:+.0f}:dec={dec:.2f},ans={ans.mean():.1f}({len(ans)}) "
+            line += (f"a{a:+.0f}:same={ga['decoded_same'].mean():.2f},last={ga['decoded_rank'].mean():.2f},"
+                     f"ans={ans.mean():.1f} ")
         print(line)
     if args.smoke:
         print("\n=== smoke raw ===")
