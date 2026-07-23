@@ -76,6 +76,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-stim", type=int, default=16)
     ap.add_argument("--alphas", default="-8,-4,-2,0,2,4,8")
+    ap.add_argument("--steer-layers", default="", help="comma ints; default 25/50/75% depth")
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
@@ -104,65 +105,64 @@ def main():
         h[0, state["pos"], :] += v
         return (h,) + out[1:] if isinstance(out, tuple) else h
 
+    _, probe_last, _ = fit_probe(args.acts, args.model, "relational", "shuffle", n_layers)
+    steer_layers = ([int(x) for x in args.steer_layers.split(",")] if args.steer_layers
+                    else [max(2, int(n_layers * f)) for f in (0.25, 0.5, 0.75)])
     rows = []
     for family in args.families.split(","):
-        Ls = PEAK[(args.model, family)]
-        v_along, probe_same, spread = fit_probe(args.acts, args.model, family, "shuffle", Ls)
-        _, probe_last, _ = fit_probe(args.acts, args.model, family, "shuffle", n_layers)  # last-layer readout
-        v_rand = rng.standard_normal(v_along.shape).astype(np.float32)
-        v_rand /= np.linalg.norm(v_rand)
+        _, probe_last_f, _ = fit_probe(args.acts, args.model, family, "shuffle", n_layers)
         pool = [s for s in stims if s["family"] == family and s["condition"] == "shuffle"]
         pool = pool[: (2 if args.smoke else args.n_stim)]
-        # probe layer L reads hidden_states[L] = output of decoder layer L-1,
-        # so to steer what the probe reads we hook layers[Ls-1].
-        handle = layers[Ls - 1].register_forward_hook(hook)
-        for s in pool:
-            N = len(s["latent_order"])
-            target = s["latent_order"][N // 2]           # mid-rank item (can move both ways)
-            true_rank = N // 2 + 1
-            block = tok.apply_chat_template([{"role": "user", "content": s["prompt"]}],
-                                            tokenize=False, add_generation_prompt=False,
-                                            **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
-            pos = name_token_ids(block, target, tok)
-            # behaviour prompt: rank question
-            q = (f"{s['prompt']}\n\nCounting from the earliest as position 1, what position is "
-                 f"the {target}? Reply with only the number. No explanation.")
-            qtext = tok.apply_chat_template([{"role": "user", "content": q}], tokenize=False,
-                                            add_generation_prompt=True,
-                                            **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
-            qpos = name_token_ids(qtext, target, tok)  # steer the same entity in the Q prompt too
-            for direction, vec in (("along", v_along), ("random", v_rand)):
-                for a in alphas:
-                    # (a) internal: forward the card block, read last-layer name pooled -> probe
-                    enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
-                    state.update(vec=vec, pos=pos, scale=a * spread)
-                    with torch.no_grad():
-                        allh = model(**enc, output_hidden_states=True).hidden_states
-                    pool_same = allh[Ls][0][pos].float().mean(0, keepdim=True).cpu().numpy()
-                    pool_last = allh[n_layers][0][pos].float().mean(0, keepdim=True).cpu().numpy()
-                    dec_same = float(probe_same(pool_same)[0])   # magnitude sanity (same layer)
-                    dec = float(probe_last(pool_last)[0])        # PROPAGATION to last layer
-                    # (b) behaviour: generate the rank answer with same steering on the Q prompt
-                    encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
-                    state.update(vec=vec, pos=qpos, scale=a * spread)
-                    with torch.no_grad():
-                        g = model.generate(**encq, max_new_tokens=8, do_sample=False,
-                                           pad_token_id=tok.eos_token_id)
-                    ans = tok.decode(g[0, encq["input_ids"].shape[1]:], skip_special_tokens=True)
-                    m = re.search(r"\d{1,3}", ans)
-                    rows.append(dict(model=args.model, family=family, stim=s["stimulus_id"],
-                                     target=target, true_rank=true_rank, direction=direction,
-                                     alpha=a, decoded_same=round(dec_same, 3), decoded_rank=round(dec, 3),
-                                     answered=int(m.group()) if m else None, raw=ans.strip()[:20]))
-                    state.update(vec=None)
-        handle.remove()
+        for Ls in steer_layers:
+            v_along, probe_same, spread = fit_probe(args.acts, args.model, family, "shuffle", Ls)
+            v_rand = rng.standard_normal(v_along.shape).astype(np.float32)
+            v_rand /= np.linalg.norm(v_rand)
+            # probe layer L reads hidden_states[L] = output of decoder layer L-1,
+            # so to steer what the probe reads we hook layers[Ls-1].
+            handle = layers[Ls - 1].register_forward_hook(hook)
+            for s in pool:
+                N = len(s["latent_order"])
+                target = s["latent_order"][N // 2]       # mid-rank item (can move both ways)
+                true_rank = N // 2 + 1
+                block = tok.apply_chat_template([{"role": "user", "content": s["prompt"]}],
+                    tokenize=False, add_generation_prompt=False,
+                    **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
+                pos = name_token_ids(block, target, tok)
+                q = (f"{s['prompt']}\n\nCounting from the earliest as position 1, what position is "
+                     f"the {target}? Reply with only the number. No explanation.")
+                qtext = tok.apply_chat_template([{"role": "user", "content": q}], tokenize=False,
+                    add_generation_prompt=True,
+                    **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
+                qpos = name_token_ids(qtext, target, tok)
+                for direction, vec in (("along", v_along), ("random", v_rand)):
+                    for a in alphas:
+                        enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                        state.update(vec=vec, pos=pos, scale=a * spread)
+                        with torch.no_grad():
+                            allh = model(**enc, output_hidden_states=True).hidden_states
+                        dec_same = float(probe_same(allh[Ls][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
+                        dec = float(probe_last_f(allh[n_layers][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
+                        encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                        state.update(vec=vec, pos=qpos, scale=a * spread)
+                        with torch.no_grad():
+                            g = model.generate(**encq, max_new_tokens=8, do_sample=False,
+                                               pad_token_id=tok.eos_token_id)
+                        ans = tok.decode(g[0, encq["input_ids"].shape[1]:], skip_special_tokens=True)
+                        m = re.search(r"\d{1,3}", ans)
+                        rows.append(dict(model=args.model, family=family, steer_layer=Ls,
+                                         stim=s["stimulus_id"], target=target, true_rank=true_rank,
+                                         direction=direction, alpha=a, decoded_same=round(dec_same, 3),
+                                         decoded_rank=round(dec, 3),
+                                         answered=int(m.group()) if m else None, raw=ans.strip()[:20]))
+                        state.update(vec=None)
+            handle.remove()
 
     import pandas as pd
     pd.DataFrame(rows).to_parquet(args.out)
     df = pd.DataFrame(rows)
     print("=== dose-response: same-layer decoded / last-layer decoded / answered rank ===")
-    for (fam, d), g in df.groupby(["family", "direction"]):
-        line = f"{fam:10s} {d:6s} | "
+    for (fam, sl, d), g in df.groupby(["family", "steer_layer", "direction"]):
+        line = f"{fam:10s} L{sl:<2d} {d:6s} | "
         for a in alphas:
             ga = g[g.alpha == a]
             ans = ga["answered"].dropna()
