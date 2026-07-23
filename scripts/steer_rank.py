@@ -113,7 +113,9 @@ def main():
         v_rand /= np.linalg.norm(v_rand)
         pool = [s for s in stims if s["family"] == family and s["condition"] == "shuffle"]
         pool = pool[: (2 if args.smoke else args.n_stim)]
-        handle = layers[Ls].register_forward_hook(hook)
+        # probe layer L reads hidden_states[L] = output of decoder layer L-1,
+        # so to steer what the probe reads we hook layers[Ls-1].
+        handle = layers[Ls - 1].register_forward_hook(hook)
         for s in pool:
             N = len(s["latent_order"])
             target = s["latent_order"][N // 2]           # mid-rank item (can move both ways)
