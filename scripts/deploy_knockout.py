@@ -106,10 +106,13 @@ def main():
         handle = layers[Ls - 1].register_forward_hook(hook)
         pool = [s for s in stims if s["family"] == family and s["condition"] == "shuffle"][
             : (2 if args.smoke else args.n_stim)]
-        for s in pool:
+        for si, s in enumerate(pool):
             N = len(s["latent_order"])
-            X = s["latent_order"][N // 2]      # mid-rank target (steered)
-            Y = s["latent_order"][0]           # earliest reference (rank 1)
+            xr = N // 2                        # X at a mid rank (steerable both ways)
+            yr = xr + (4 if si % 2 == 0 else -4)  # Y at distance 4, BALANCED direction
+            X = s["latent_order"][xr]
+            Y = s["latent_order"][yr]
+            x_earlier = xr < yr                # ground truth for THIS pair (varies!)
             # forced-choice pairwise, read first token of X vs Y after "Answer: the"
             prompt = (s["prompt"] + f"\n\nWhich acted earlier: the {X} or the {Y}? Answer: the")
             full = tok.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False,
@@ -139,27 +142,50 @@ def main():
                     # margin toward X (says X earlier). X is truly later than Y,
                     # so a correct model is negative; steering X earlier should raise it.
                     margin_X = float(lg[x_id] - lg[y_id])
+                    # correct iff the model prefers the truly-earlier one
+                    correct = (margin_X > 0) == x_earlier
                     rows.append(dict(model=args.model, family=family, stim=s["stimulus_id"],
-                                     target=X, ref=Y, cond=cond, direction=dname, alpha=a,
-                                     margin_x=round(margin_X, 3)))
+                                     target=X, ref=Y, x_earlier=bool(x_earlier), cond=cond,
+                                     direction=dname, alpha=a, margin_x=round(margin_X, 3),
+                                     correct=bool(correct)))
                     state.update(vec=None)
         handle.remove()
 
     import pandas as pd
     df = pd.DataFrame(rows); df.to_parquet(args.out)
-    print("=== FULL attention sanity: margin toward X (X is truly LATER than Y -> expect < 0) ===")
-    for fam, g in df[df.cond == "full"].groupby("family"):
-        print(f"  {fam:10s} mean margin_X={g.margin_x.mean():+.2f}  (frac correct 'Y earlier': {(g.margin_x<0).mean():.2f})")
-    print("=== KNOCKOUT dose-response: margin toward X vs alpha (v increases rank; -alpha = X earlier) ===")
+    print("=== BASELINE accuracy (balanced pairs, chance=0.50) — must be >0.5 and <1 to be a real task ===")
+    for (fam, cond), g in df[df.direction.isin(["none"]) | (df.alpha == 0)].groupby(["family", "cond"]):
+        gg = g[(g.cond == "full") | ((g.cond == "knock") & (g.direction == "along"))]  # a=0 same for along/random
+        print(f"  {fam:10s} {cond:5s} acc={g.correct.mean():.2f} (n={len(g)})  mean|margin|={g.margin_x.abs().mean():.2f}")
+    print("=== KNOCKOUT dose-response: margin toward X vs alpha (v increases rank => expect margin DOWN with alpha) ===")
+    slopes = {}
     for (fam, d), g in df[df.cond == "knock"].groupby(["family", "direction"]):
         line = f"  {fam:10s} {d:6s} | "
         for a in alphas:
             line += f"a{a:+.0f}:m={g[g.alpha==a]['margin_x'].mean():+.2f} "
-        print(line)
+        # per-stimulus slope of margin vs alpha
+        sl = []
+        for st, gs in g.groupby("stim"):
+            gs = gs.sort_values("alpha")
+            sl.append(np.polyfit(gs.alpha, gs.margin_x, 1)[0])
+        slopes[(fam, d)] = np.array(sl)
+        print(line + f" | mean slope={np.mean(sl):+.3f}")
+    print("=== DEPLOYMENT TEST: along vs random steering slope (paired over stimuli) ===")
+    from scipy.stats import wilcoxon
+    for fam in df.family.unique():
+        if (fam, "along") in slopes and (fam, "random") in slopes:
+            a_sl, r_sl = slopes[(fam, "along")], slopes[(fam, "random")]
+            try:
+                p = wilcoxon(a_sl, r_sl).pvalue
+            except Exception:
+                p = float("nan")
+            print(f"  {fam:10s} along slope={a_sl.mean():+.3f} vs random={r_sl.mean():+.3f} "
+                  f"(|along|-|random|={np.abs(a_sl).mean()-np.abs(r_sl).mean():+.3f}, paired p={p:.3f})")
     if args.smoke:
         print("\n=== smoke raw ===")
         for r in rows:
-            print(f"  {r['family'][:3]} {r['cond']:5s} {r['direction']:6s} a{r['alpha']:+.0f} margin_X={r['margin_x']:+.2f}")
+            print(f"  {r['family'][:3]} xE={int(r['x_earlier'])} {r['cond']:5s} {r['direction']:6s} "
+                  f"a{r['alpha']:+.0f} m={r['margin_x']:+.2f} ok={int(r['correct'])}")
     print(f"\nwrote -> {args.out}")
 
 
