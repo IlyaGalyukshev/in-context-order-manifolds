@@ -105,12 +105,14 @@ def main():
         h[0, state["pos"], :] += v
         return (h,) + out[1:] if isinstance(out, tuple) else h
 
-    _, probe_last, _ = fit_probe(args.acts, args.model, "relational", "shuffle", n_layers)
     steer_layers = ([int(x) for x in args.steer_layers.split(",")] if args.steer_layers
-                    else [max(2, int(n_layers * f)) for f in (0.25, 0.5, 0.75)])
+                    else [max(2, int(n_layers * f)) for f in (0.25, 0.4)])
     rows = []
     for family in args.families.split(","):
-        _, probe_last_f, _ = fit_probe(args.acts, args.model, family, "shuffle", n_layers)
+        # read PROPAGATION at the family's manifold peak (where rank is most
+        # decodable), NOT the last layer (rank is weak there). Steer BELOW it.
+        LP = PEAK[(args.model, family)]
+        _, probe_prop, _ = fit_probe(args.acts, args.model, family, "shuffle", LP)
         pool = [s for s in stims if s["family"] == family and s["condition"] == "shuffle"]
         pool = pool[: (2 if args.smoke else args.n_stim)]
         for Ls in steer_layers:
@@ -141,7 +143,7 @@ def main():
                         with torch.no_grad():
                             allh = model(**enc, output_hidden_states=True).hidden_states
                         dec_same = float(probe_same(allh[Ls][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
-                        dec = float(probe_last_f(allh[n_layers][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
+                        dec = float(probe_prop(allh[LP][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
                         encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                         state.update(vec=vec, pos=qpos, scale=a * spread)
                         with torch.no_grad():
