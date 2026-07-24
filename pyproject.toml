@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "icom"
 version = "0.1.0"
-description = "In-context order manifolds: the geometry of novel ordered sequences in LLM activations"
+description = "In-context order manifolds: does an LLM build an entity-indexed manifold of a novel in-context relational structure (Balanced Comparability Sets)"
 authors = [{ name = "Ilya Galyukshev", email = "galyukshev.ilya@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,7 +16,6 @@ dependencies = [
     "pyarrow>=14",
     "scipy>=1.11",
     "scikit-learn>=1.3",
-    "statsmodels>=0.14",
     "pyyaml>=6",
     "tqdm>=4.65",
     "wordfreq>=3.0",   # real-word screen for nonce entities
@@ -31,9 +30,7 @@ gpu = [
     "accelerate>=0.30",
     "datasets>=2.19",
 ]
-llm = ["openai>=1.30", "python-dotenv>=1.0"]  # generator/llm_assist.py (OpenRouter)
-topology = ["ripser>=0.6", "persim>=0.3"]
-viz = ["matplotlib>=3.8", "seaborn>=0.13"]
+viz = ["matplotlib>=3.8", "seaborn>=0.13"]  # depth-profile / dimensionality figures
 dev = ["pytest>=8", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]

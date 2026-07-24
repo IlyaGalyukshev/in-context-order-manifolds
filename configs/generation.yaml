@@ -1,45 +1,27 @@
-# Dataset generation. Deterministic from this file + seed.
-seed: 20260704
+# Committed inputs for dataset generation. The BCS generator itself takes its
+# structural parameters (families, N grid, difficulty, degree, structures) as
+# CLI args to generate_bcs.py — see README. This file holds the deterministic
+# POOLS and the offline LLM pool-authoring config only.
+seed: 20260724
 
-families: [dated, tagged, relational]
-conditions: [forward, reverse, shuffle, posctl]
-
-n_items_grid: [8, 16, 32]        # 48 added after pilot cost measurement
-stimuli_per_cell: 300            # per (family × N); all 4 conditions share content
-holdout_fraction: 0.2            # latent orders reserved for layer selection ONLY
-
-surface:
-  fixed_width_markers: true      # "Day 03", "Tag 07" — constant token length
-  drop_day_of_week: true         # deterministic function of date; a second axis the
-                                 # model can compute instead of reading order
 entities:
   vocab_size: 500
-  max_tokens_per_name: 3         # enforced per tokenizer in the roster
+  max_tokens_per_name: 3           # enforced per tokenizer in the roster
 
-pools:                           # committed artifacts the generator samples from
+pools:                             # committed artifacts the generator samples from
   predicates: data/pools/event_predicates_v1.json
   entities: data/pools/entities_v1.json
 
-questions:
-  reconstruction_per_stimulus: 1
-  pairwise_per_distance_bin: 3
-  distance_bins: [1, 2-3, 4-7, 8+]
-  adjacency_max: 10
-  rank_max: 10
-  span_locations: [start, middle, end]
-
 llm_assist:
-  # Offline pool authoring via OpenRouter (generator/llm_assist.py). Outputs
-  # are cached in data/pools/ and committed; the per-stimulus path stays
-  # deterministic and never calls an API. Key budget is shared — check
-  # remaining credit before large authoring runs.
-  # OPENROUTER_PROXY is REQUIRED: all calls go through it, never direct.
+  # Offline predicate-pool authoring via OpenRouter (generator/llm_assist.py).
+  # Outputs are committed to data/pools/; the per-stimulus generator path is
+  # deterministic and NEVER calls an API.
+  # OPENROUTER_PROXY is REQUIRED — all calls go through it, never direct.
   enabled: false
   api_key_env: OPENROUTER_API_KEY
   base_url_env: OPENROUTER_BASE_URL
-  proxy_env: OPENROUTER_PROXY   # mandatory, llm_assist refuses to run without it
-  # Supervisor rule: reviewer must be same tier or STRONGER than the author,
-  # and preferably from a different lab (fewer shared blind spots).
-  author_model: anthropic/claude-sonnet-5    # $2/$10 per M (checked 2026-07-04)
-  reviewer_model: openai/gpt-5.5             # $5/$30 per M — the supervisor
+  proxy_env: OPENROUTER_PROXY      # mandatory; llm_assist refuses to run without it
+  # Supervisor rule: reviewer >= author tier, preferably a different lab.
+  author_model: anthropic/claude-sonnet-5
+  reviewer_model: openai/gpt-5.5
   predicate_pool_size: 400
