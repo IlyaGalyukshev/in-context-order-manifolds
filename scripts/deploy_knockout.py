@@ -73,6 +73,7 @@ def main():
     ap.add_argument("--families", default="relational,tagged")
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-stim", type=int, default=16)
+    ap.add_argument("--peak-layer", type=int, default=0, help="override manifold peak layer")
     ap.add_argument("--alphas", default="-8,-4,0,4,8")
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
@@ -100,7 +101,7 @@ def main():
 
     rows = []
     for family in args.families.split(","):
-        Ls = PEAK[(args.model, family)]
+        Ls = args.peak_layer or PEAK[(args.model, family)]
         v_along, spread = fit_dir(args.acts, args.model, family, Ls)
         v_rand = rng.standard_normal(v_along.shape).astype(np.float32); v_rand /= np.linalg.norm(v_rand)
         handle = layers[Ls - 1].register_forward_hook(hook)
@@ -109,7 +110,10 @@ def main():
         for si, s in enumerate(pool):
             N = len(s["latent_order"])
             xr = N // 2                        # X at a mid rank (steerable both ways)
-            yr = xr + (4 if si % 2 == 0 else -4)  # Y at distance 4, BALANCED direction
+            d = max(2, N // 3)                 # separation, N-safe
+            yr = xr + d if (si % 2 == 0 and xr + d < N) else xr - d
+            if not (0 <= yr < N) or yr == xr:  # fallback to the valid side
+                yr = xr + d if xr + d < N else xr - d
             X = s["latent_order"][xr]
             Y = s["latent_order"][yr]
             x_earlier = xr < yr                # ground truth for THIS pair (varies!)
