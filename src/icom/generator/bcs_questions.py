@@ -82,3 +82,59 @@ def make_battery(stim: dict, *, pairwise_per_bin: int = 4, rank_max: int = 10):
             order[k], "name", is_endpoint=(k in (0, N - 1)),
             both_interior=interior(order[k]), target_entities=(order[k],))
     return qs
+
+
+def make_partial_battery(stim: dict, *, per_kind: int = 12):
+    """Partial-order battery: within-chain pairwise (comparable) + cross-chain
+    INCOMPARABILITY (the sharp test: does the model invent a total order?)."""
+    rel = RELATIONS[stim["relation"]]
+    ents = stim["latent_order"]; ck = stim["content_key"]
+    chain_of = stim["chain_of"]; wrank = stim["within_rank"]
+    rng = rng_for(stim["seed"], "bcs_po_q", stim["relation"], ck)
+    qs = []
+
+    def add(fam, text, key, fmt, **meta):
+        qs.append({"stimulus_content_key": ck, "qid": f"{ck}:{fam}:{len(qs)}",
+                   "family": fam, "text": text + FMT[fmt], "answer_key": key, **meta})
+
+    same = [(a, b) for a in ents for b in ents if a < b and chain_of[a] == chain_of[b]]
+    diff = [(a, b) for a in ents for b in ents if a < b and chain_of[a] != chain_of[b]]
+    rng.shuffle(same); rng.shuffle(diff)
+    for a, b in same[:per_kind]:
+        earlier = a if wrank[a] < wrank[b] else b
+        for first, second in ((a, b), (b, a)):
+            add("pairwise", f"By the relations above, which is {rel.cmp_low}: the "
+                            f"{first} or the {second}?", earlier, "choice",
+                comparable=True, target_entities=(first, second))
+    for a, b in diff[:per_kind]:
+        add("incomparability",
+            f"Using only the relations stated, is it determined which is {rel.cmp_low}, "
+            f"the {a} or the {b}? Reply with the entity name if determined, or "
+            f"'undetermined'.", "undetermined", "choice",
+            comparable=False, target_entities=(a, b))
+    return qs
+
+
+def make_grid_battery(stim: dict, *, per_axis: int = 12):
+    """2D-grid battery: per-axis pairwise (each axis separately queryable)."""
+    fx, fy = stim["family"].split("|")
+    rx, ry = RELATIONS[fx], RELATIONS[fy]
+    ents = stim["latent_order"]; ck = stim["content_key"]
+    cx, cy = stim["coord_x"], stim["coord_y"]
+    rng = rng_for(stim["seed"], "bcs_grid_q", ck)
+    qs = []
+
+    def add(text, key, axis, **meta):
+        qs.append({"stimulus_content_key": ck, "qid": f"{ck}:pairwise:{len(qs)}",
+                   "family": "pairwise", "axis": axis, "text": text + FMT["choice"],
+                   "answer_key": key, **meta})
+
+    for axis, coord, rel in (("x", cx, rx), ("y", cy, ry)):
+        pairs = [(a, b) for a in ents for b in ents if a < b and coord[a] != coord[b]]
+        rng.shuffle(pairs)
+        for a, b in pairs[:per_axis]:
+            lower = a if coord[a] < coord[b] else b
+            for first, second in ((a, b), (b, a)):
+                add(f"By the relations above, which is {rel.cmp_low}: the {first} or "
+                    f"the {second}?", lower, axis, target_entities=(first, second))
+    return qs

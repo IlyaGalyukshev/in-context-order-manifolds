@@ -97,3 +97,45 @@ def test_circulant_regular_and_contains_path():
         edges = circulant_graph(N, d)
         assert all(_degree(edges, i) == d for i in range(N))
         assert all((i, i + 1) in edges for i in range(N - 1))
+
+
+def test_partial_order_no_cross_chain_edges():
+    """Cross-chain pairs must be incomparable: zero cards relate different chains."""
+    from icom.generator.bcs import build_partial_order
+    for idx in range(10):
+        s = build_partial_order("s1_size", 2, 5, SEED, idx, VOCAB, d=4, condition="shuffle")
+        ci = s["chain_of"]
+        assert sum(1 for c in s["cards"] if ci[c["entity"]] != ci[c["entity_b"]]) == 0
+        assert set(ci.values()) == {0, 1}
+        # each chain independently degree-regular in mentions
+        from collections import Counter
+        cnt = Counter()
+        for c in s["cards"]:
+            cnt[c["entity"]] += 1; cnt[c["entity_b"]] += 1
+        for chain in (0, 1):
+            degs = {cnt[e] for e in ci if ci[e] == chain}
+            assert len(degs) == 1, degs  # rank-invariant mention count within chain
+
+
+def test_grid2d_two_axes():
+    from icom.generator.bcs import build_grid2d
+    g = build_grid2d("s1_size", "s1_loud", 3, 3, SEED, 0, VOCAB, d=4, condition="shuffle")
+    assert g["n_items"] == 9
+    assert "smaller than" in g["prompt"] or "larger than" in g["prompt"]
+    assert "louder than" in g["prompt"] or "quieter than" in g["prompt"]
+    xs = {g["coord_x"][e] for e in g["latent_order"]}
+    assert xs == {1, 2, 3}
+
+
+def test_incomparability_questions():
+    from icom.generator.bcs import build_partial_order
+    from icom.generator.bcs_questions import make_partial_battery
+    s = build_partial_order("s1_size", 2, 5, SEED, 0, VOCAB, d=4, condition="shuffle")
+    qs = make_partial_battery(s)
+    inc = [q for q in qs if q["family"] == "incomparability"]
+    assert inc and all(q["answer_key"] == "undetermined" for q in inc)
+    # cross-chain pairs only
+    ci = s["chain_of"]
+    for q in inc:
+        a, b = q["target_entities"]
+        assert ci[a] != ci[b]

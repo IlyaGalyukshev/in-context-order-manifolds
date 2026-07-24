@@ -97,6 +97,23 @@ def regular_graph_with_path(n: int, d: int, rng: np.random.Generator, max_tries:
     return circulant_graph(n, d)
 
 
+def feasible_degree(m: int, d: int) -> int:
+    """Largest even degree <= min(d, m-1) that admits an Eulerian orientation."""
+    de = min(d, m - 1)
+    if de % 2:
+        de -= 1
+    return max(2, de)
+
+
+def chain_edges(m: int, d: int, rng):
+    """Edges for a length-m chain (path + regular padding). m<=2 => single edge."""
+    if m <= 1:
+        return []
+    if m == 2:
+        return [(0, 1)]
+    return sorted(regular_graph_with_path(m, feasible_degree(m, d), rng))
+
+
 def circulant_graph(n: int, d: int):
     """C_n(1..d/2) on a cycle: exactly d-regular, contains the path, symmetric
     across ranks (only the earlier/later ROLE depends on rank -> the cleanest,
@@ -301,6 +318,126 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
         json.dumps([family, condition, n_items, seed, idx, d, balanced, incoherent, prompt],
                    sort_keys=True).encode()).hexdigest()[:16]
     return stim
+
+
+# ---------------------------------------------------------- non-total structures
+def build_partial_order(family: str, n_chains: int, chain_len: int, seed: int, idx: int,
+                        vocab, d: int = 4, condition: str = "shuffle"):
+    """K disjoint total orders (chains) stated with BCS edges WITHIN each chain
+    and NONE across => cross-chain pairs are INCOMPARABLE. Tests whether the
+    model represents K separate 1D orders (≥2 components) and respects
+    incomparability instead of inventing a single total order.
+
+    Per-entity labels: chain_id + within_chain_rank. There is no global rank.
+    """
+    rel = RELATIONS[family]
+    rng = rng_for(seed, "bcs_po", family, n_chains, chain_len, seed, idx)
+    N = n_chains * chain_len
+    ents = [vocab[i] for i in rng.choice(len(vocab), size=N, replace=False)]
+    chains = [ents[c * chain_len:(c + 1) * chain_len] for c in range(n_chains)]
+
+    cards = []
+    chain_of = {}; wrank = {}
+    for c, chain in enumerate(chains):
+        edges = chain_edges(chain_len, d, rng)
+        tail = eulerian_orientation(edges, chain_len)
+        for k, (lo, hi) in enumerate(edges):
+            earlier, later = chain[lo], chain[hi]
+            if tail[k] == lo:
+                text = f"The {earlier} {rel.fwd} the {later}."; first, second = earlier, later
+            else:
+                text = f"The {later} {rel.inv} the {earlier}."; first, second = later, earlier
+            cards.append({"lo": lo, "hi": hi, "text": text, "entity": first, "entity_b": second})
+        for r, e in enumerate(chain):
+            chain_of[e] = c; wrank[e] = r + 1
+
+    order = _condition_order(cards, ents, chain_of, wrank, condition, rng)
+    cards = [cards[i] for i in order]
+    for slot, c in enumerate(cards, 1):
+        c["presentation_slot"] = slot; c["latent_rank"] = c["lo"] + 1
+
+    prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
+    key = hashlib.sha256(json.dumps(
+        ["po", family, n_chains, chain_len, seed, idx, ents], sort_keys=True).encode()).hexdigest()[:16]
+    stim = {
+        "family": family, "structure": "partial_order", "condition": condition,
+        "n_items": N, "n_chains": n_chains, "chain_len": chain_len, "seed": seed,
+        "relation": rel.name, "degree": d,
+        "latent_order": list(ents),  # arbitrary listing; NOT a global order
+        "chain_of": {e: int(chain_of[e]) for e in ents},
+        "within_rank": {e: int(wrank[e]) for e in ents},
+        "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
+                   "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]}
+                  for c in cards],
+        "prompt": prompt, "content_key": key,
+    }
+    stim["stimulus_id"] = hashlib.sha256((key + condition).encode()).hexdigest()[:16]
+    return stim
+
+
+def build_grid2d(family_x: str, family_y: str, gx: int, gy: int, seed: int, idx: int,
+                 vocab, d: int = 4, condition: str = "shuffle"):
+    """N=gx*gy entities on a grid with two INDEPENDENT latent coordinates
+    (x via relation family_x, y via family_y). Relations sampled within rows
+    (x-comparisons) and columns (y-comparisons), degree-balanced per axis.
+    Tests whether a 2D manifold forms with x and y separately decodable."""
+    rx, ry = RELATIONS[family_x], RELATIONS[family_y]
+    rng = rng_for(seed, "bcs_grid", family_x, family_y, gx, gy, seed, idx)
+    N = gx * gy
+    ents = [vocab[i] for i in rng.choice(len(vocab), size=N, replace=False)]
+    coord = {ents[r * gy + c]: (r + 1, c + 1) for r in range(gx) for c in range(gy)}
+
+    cards = []
+    # x-comparisons: within each column (same y), order the gx entities by x
+    for c in range(gy):
+        col = [ents[r * gy + c] for r in range(gx)]
+        _emit_chain_cards(col, rx, gx, d, rng, cards)
+    # y-comparisons: within each row (same x), order the gy entities by y
+    for r in range(gx):
+        row = [ents[r * gy + c] for c in range(gy)]
+        _emit_chain_cards(row, ry, gy, d, rng, cards)
+
+    order = rng.permutation(len(cards)) if condition == "shuffle" else np.arange(len(cards))
+    cards = [cards[i] for i in order]
+    for slot, cc in enumerate(cards, 1):
+        cc["presentation_slot"] = slot; cc["latent_rank"] = 0
+
+    preamble = " ".join(p for p in (rx.preamble, ry.preamble) if p)
+    prompt = (preamble + "\n\n" if preamble else "") + "\n".join(cc["text"] for cc in cards)
+    key = hashlib.sha256(json.dumps(
+        ["grid", family_x, family_y, gx, gy, seed, idx, ents], sort_keys=True).encode()).hexdigest()[:16]
+    stim = {
+        "family": f"{family_x}|{family_y}", "structure": "grid2d", "condition": condition,
+        "n_items": N, "gx": gx, "gy": gy, "seed": seed, "degree": d,
+        "latent_order": list(ents),
+        "coord_x": {e: coord[e][0] for e in ents}, "coord_y": {e: coord[e][1] for e in ents},
+        "cards": [{"entity": cc["entity"], "entity_b": cc["entity_b"], "text": cc["text"],
+                   "latent_rank": 0, "presentation_slot": cc["presentation_slot"]} for cc in cards],
+        "prompt": prompt, "content_key": key,
+    }
+    stim["stimulus_id"] = hashlib.sha256((key + condition).encode()).hexdigest()[:16]
+    return stim
+
+
+def _emit_chain_cards(chain, rel, m, d, rng, cards):
+    """Append BCS cards ordering `chain` (index r => rank r) by `rel`."""
+    edges = chain_edges(m, d, rng)
+    tail = eulerian_orientation(edges, m)
+    for k, (lo, hi) in enumerate(edges):
+        earlier, later = chain[lo], chain[hi]
+        if tail.get(k, lo) == lo:
+            text = f"The {earlier} {rel.fwd} the {later}."; first, second = earlier, later
+        else:
+            text = f"The {later} {rel.inv} the {earlier}."; first, second = later, earlier
+        cards.append({"lo": lo, "hi": hi, "text": text, "entity": first, "entity_b": second})
+
+
+def _condition_order(cards, ents, chain_of, wrank, condition, rng):
+    m = len(cards)
+    if condition == "forward":
+        return np.argsort([(chain_of[cards[i]["entity"]], cards[i]["lo"]) for i in range(m)],
+                          kind="stable")
+    return rng.permutation(m)
 
 
 def _order_by_min_rank(cards):
