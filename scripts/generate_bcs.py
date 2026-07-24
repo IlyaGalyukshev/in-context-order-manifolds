@@ -29,7 +29,8 @@ def main():
     ap.add_argument("--per-cell", type=int, default=100)
     ap.add_argument("--degree", type=int, default=4)
     ap.add_argument("--conditions", default="shuffle,forward")
-    ap.add_argument("--balanced", action="store_true", help="circulant (hardest) variant")
+    ap.add_argument("--difficulty", default="both", choices=["easy", "hard", "both"],
+                    help="easy=banded circulant (local chaining); hard=random-regular (global integration)")
     ap.add_argument("--with-null", action="store_true", default=True)
     ap.add_argument("--structures", action="store_true",
                     help="also emit partial-order (2 chains) + 2D-grid stimuli")
@@ -46,32 +47,34 @@ def main():
     gate_fail = 0
     with open(out / "stimuli.jsonl", "w") as fs, open(out / "questions.jsonl", "w") as fq, \
          open(out / "stimuli_null.jsonl", "w") as fn:
+        diffs = ["easy", "hard"] if args.difficulty == "both" else [args.difficulty]
         for fam in fams:
             for N in ngrid:
-                for idx in range(args.per_cell):
-                    battery_written = False
-                    for cond in conds:
-                        st = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
-                                            balanced=args.balanced, condition=cond)
-                        g = st["gate"]
-                        base_ok = (g["degree_regular"] and g["unique_total_order"]
-                                   and abs(g["corr_rank_subjfrac"]) < 1e-9
-                                   and abs(g["corr_rank_mentions"]) < 1e-9)
-                        # the position-decorrelation gate applies ONLY to shuffle
-                        # (forward is position=order by design, not a failure)
-                        slot_ok = (cond != "shuffle") or (abs(g["corr_rank_slot"]) <= 0.20)
-                        if not (base_ok and slot_ok):
-                            gate_fail += 1
-                        fs.write(json.dumps(st) + "\n"); n_stim += 1
-                        if not battery_written:  # battery shared across conditions
-                            for q in make_battery(st):
-                                fq.write(json.dumps(q) + "\n"); n_q += 1
-                            battery_written = True
-                    if args.with_null:
-                        z = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
-                                           balanced=args.balanced, condition="shuffle",
-                                           incoherent=True)
-                        fn.write(json.dumps(z) + "\n"); n_null += 1
+                for diff in diffs:
+                    for idx in range(args.per_cell):
+                        battery_written = False
+                        for cond in conds:
+                            st = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
+                                                difficulty=diff, condition=cond)
+                            st["difficulty"] = diff
+                            g = st["gate"]
+                            base_ok = (g["degree_regular"] and g["unique_total_order"]
+                                       and abs(g["corr_rank_subjfrac"]) < 1e-9
+                                       and abs(g["corr_rank_mentions"]) < 1e-9)
+                            # position-decorrelation gate applies ONLY to shuffle
+                            slot_ok = (cond != "shuffle") or (abs(g["corr_rank_slot"]) <= 0.20)
+                            if not (base_ok and slot_ok):
+                                gate_fail += 1
+                            fs.write(json.dumps(st) + "\n"); n_stim += 1
+                            if not battery_written:  # battery shared across conditions
+                                for q in make_battery(st):
+                                    fq.write(json.dumps(q) + "\n"); n_q += 1
+                                battery_written = True
+                        if args.with_null:
+                            z = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
+                                               difficulty=diff, condition="shuffle",
+                                               incoherent=True)
+                            fn.write(json.dumps(z) + "\n"); n_null += 1
 
     n_struct = 0
     if args.structures:
@@ -97,7 +100,7 @@ def main():
                                 fq.write(json.dumps(q) + "\n"); n_q += 1
 
     meta = {"families": fams, "n_grid": ngrid, "per_cell": args.per_cell, "degree": args.degree,
-            "conditions": conds, "balanced": args.balanced, "n_stimuli": n_stim + n_struct,
+            "conditions": conds, "difficulty": args.difficulty, "n_stimuli": n_stim + n_struct,
             "n_total_order": n_stim, "n_structures": n_struct,
             "n_questions": n_q, "n_null": n_null, "gate_failures": gate_fail}
     (out / "meta.json").write_text(json.dumps(meta, indent=2))

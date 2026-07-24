@@ -21,7 +21,7 @@ import re
 
 import numpy as np
 
-POOLING_SCHEMES = ("name", "marker", "last_token", "card_mean")
+POOLING_SCHEMES = ("name", "readout", "marker", "last_token", "card_mean")
 
 
 def _tokens_in_span(offsets: list[tuple[int, int]], lo: int, hi: int) -> list[int]:
@@ -46,13 +46,17 @@ def build_spans(prompt: str, stimulus: dict, offsets: list[tuple[int, int]]) -> 
         lo, hi = card_pos[primary["text"]]
 
         name_toks: list[int] = []
-        # [Tt]he: relational cards open with capitalized "The <entity> ..."
+        last_mention: list[int] = []
+        # [Tt]he: cards/roster open with "The <entity>" / "the <entity>"
         for m in re.finditer(rf"\b[Tt]he {re.escape(e)}\b", prompt):
-            name_toks += _tokens_in_span(offsets, m.start() + 4, m.end())
+            toks = _tokens_in_span(offsets, m.start() + 4, m.end())
+            name_toks += toks
+            last_mention = toks  # overwritten -> ends as the LAST mention
         card_toks = _tokens_in_span(offsets, lo, hi)
 
         d: dict[str, list[int]] = {
-            "name": sorted(set(name_toks)),
+            "name": sorted(set(name_toks)),        # pooled over all mentions (mention-confounded)
+            "readout": last_mention,               # roster token: post-all-cards read locus
             "last_token": [card_toks[-1]],
             "card_mean": card_toks,
         }

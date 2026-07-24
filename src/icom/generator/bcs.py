@@ -66,33 +66,39 @@ def _path_edges(n):
     return {(i, i + 1) for i in range(n - 1)}
 
 
-def regular_graph_with_path(n: int, d: int, rng: np.random.Generator, max_tries: int = 200):
-    """A simple d-regular graph on ranks 0..n-1 that CONTAINS the path
-    {(i,i+1)}. Edges returned as (lo,hi) rank pairs (lo<hi => lo is earlier).
-
-    Configuration model over residual stubs (after mandatory path edges) with
-    rejection of self/multi/adjacent-duplicate; falls back to a circulant.
+def regular_graph_with_path(n: int, d: int, rng: np.random.Generator, max_tries: int = 60,
+                            prefer: str = "any"):
+    """A simple d-regular graph on ranks 0..n-1 CONTAINING the path {(i,i+1)}
+    (forces the UNIQUE total order). Padding edges are chosen greedily by
+    distance preference:
+      prefer='near' (easy) — short padding, local redundancy, chain-solvable;
+      prefer='far'  (hard) — long padding, forces reconciling far comparisons;
+      prefer='any'  — random padding.
     Requires n*d even and 2<=d<=n-1.
     """
     assert 2 <= d <= n - 1 and (n * d) % 2 == 0, f"infeasible d={d} for n={n}"
-    path = _path_edges(n)
-    deg0 = {i: 0 for i in range(n)}
-    for a, b in path:
-        deg0[a] += 1; deg0[b] += 1
     for _ in range(max_tries):
-        edges = set(path)
-        residual = []
-        for i in range(n):
-            residual += [i] * (d - deg0[i])
-        rng.shuffle(residual)
-        ok = True
-        for k in range(0, len(residual), 2):
-            a, b = residual[k], residual[k + 1]
-            lo, hi = (a, b) if a < b else (b, a)
-            if a == b or (lo, hi) in edges:
-                ok = False; break
-            edges.add((lo, hi))
-        if ok and all(_degree(edges, i) == d for i in range(n)):
+        edges = set(_path_edges(n))
+        deg = {i: _degree(edges, i) for i in range(n)}
+        stuck = False
+        while True:
+            deficient = [i for i in range(n) if deg[i] < d]
+            if not deficient:
+                break
+            i = int(rng.choice(deficient))
+            cands = [j for j in range(n) if j != i and deg[j] < d
+                     and (min(i, j), max(i, j)) not in edges]
+            if not cands:
+                stuck = True; break
+            if prefer == "near":
+                cands.sort(key=lambda j: (abs(i - j), rng.random()))
+            elif prefer == "far":
+                cands.sort(key=lambda j: (-abs(i - j), rng.random()))
+            else:
+                rng.shuffle(cands)
+            j = cands[0]
+            edges.add((min(i, j), max(i, j))); deg[i] += 1; deg[j] += 1
+        if not stuck and all(deg[i] == d for i in range(n)):
             return edges
     return circulant_graph(n, d)
 
@@ -224,6 +230,29 @@ def _subject_slot_fraction(cards, entities):
 
 
 # ------------------------------------------------------------------ rendering
+def roster_line(entities, rng, rank_of=None, thresh=0.15, tries=3000):
+    """Appended readout tail: every entity mentioned ONCE, after all cards, in a
+    rank-decorrelated random order. Gives each entity a clean post-integration
+    read position (its roster token) so 'which layer' is not confounded by
+    'which mention'. Returns (text_line, roster_order)."""
+    n = len(entities)
+    order = list(rng.permutation(n))
+    if rank_of is not None:
+        ranks = np.array([rank_of[e] for e in entities])
+        best, bestrho = order, np.inf
+        for _ in range(tries):
+            perm = list(rng.permutation(n))
+            pos_rank = np.array([ranks[p] for p in perm])          # rank at each roster slot
+            rho = abs(np.corrcoef(np.arange(n), pos_rank)[0, 1])
+            if rho <= thresh:
+                best = perm; break
+            if rho < bestrho:
+                best, bestrho = perm, rho
+        order = best
+    names = [entities[p] for p in order]
+    return "Entities: " + ", ".join(f"the {e}" for e in names) + ".", names
+
+
 def _card_text(rel: Relation, earlier: str, later: str, flip: bool):
     """Return (text, first_named, second_named). flip decides phrasing."""
     if not flip:
@@ -231,16 +260,28 @@ def _card_text(rel: Relation, earlier: str, later: str, flip: bool):
     return f"The {later} {rel.inv} the {earlier}.", later, earlier
 
 
+def _prefer(difficulty):
+    return {"easy": "near", "hard": "far"}.get(difficulty, "any")
+
+
 def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
-                   condition: str = "shuffle", incoherent: bool = False):
-    """One BCS stimulus. family is a RELATIONS key. Returns a dict."""
+                   condition: str = "shuffle", incoherent: bool = False,
+                   difficulty: str = None, readout: bool = True):
+    """One BCS stimulus. family is a RELATIONS key. Returns a dict.
+
+    difficulty overrides `balanced`: 'easy' = banded circulant (order recoverable
+    by LOCAL chaining), 'hard' = random-regular (LONG edges, needs GLOBAL
+    integration). Both are degree-regular / confound-clean.
+    readout appends a rank-decorrelated entity roster for a clean read position.
+    """
+    prefer = _prefer(difficulty)
     rel = RELATIONS[family]
     rng = rng_for(seed, "bcs", family, n_items, idx, d, balanced)
     entities = [vocab[i] for i in rng.choice(len(vocab), size=n_items, replace=False)]
 
     edges = (circulant_graph(n_items, d) if balanced
-             else regular_graph_with_path(n_items, d, rng))
+             else regular_graph_with_path(n_items, d, rng, prefer=prefer))
     edge_list = sorted(edges)
 
     cards = []
@@ -288,11 +329,10 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     ranks = np.array([rank_of[e] for e in entities])
 
     prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
-    for r, e in enumerate(entities):
-        for c in cards:
-            if c["entity"] == e or c["entity_b"] == e:
-                pass
-    # attach per-card latent_rank of the earlier entity (for compat)
+    readout_order = None
+    if readout:
+        line, readout_order = roster_line(entities, rng, rank_of=rank_of)
+        prompt += "\n\n" + line
     for c in cards:
         c["latent_rank"] = c["lo"] + 1
 
@@ -312,7 +352,7 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
         "prompt": prompt, "content_key": content_key,
         "entity_ranks": {e: int(rank_of[e]) for e in entities},
         "entity_slots": {e: int(s) for e, s in zip(entities, slots)},
-        "gate": report,
+        "readout_order": readout_order, "gate": report,
     }
     stim["stimulus_id"] = hashlib.sha256(
         json.dumps([family, condition, n_items, seed, idx, d, balanced, incoherent, prompt],
@@ -357,6 +397,8 @@ def build_partial_order(family: str, n_chains: int, chain_len: int, seed: int, i
         c["presentation_slot"] = slot; c["latent_rank"] = c["lo"] + 1
 
     prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
+    _, readout_order = roster_line(ents, rng)
+    prompt += "\n\nEntities: " + ", ".join(f"the {e}" for e in readout_order) + "."
     key = hashlib.sha256(json.dumps(
         ["po", family, n_chains, chain_len, seed, idx, ents], sort_keys=True).encode()).hexdigest()[:16]
     stim = {
@@ -401,6 +443,8 @@ def build_grid2d(family_x: str, family_y: str, N: int, seed: int, idx: int,
 
     preamble = " ".join(p for p in (rx.preamble, ry.preamble) if p)
     prompt = (preamble + "\n\n" if preamble else "") + "\n".join(cc["text"] for cc in cards)
+    _, readout_order = roster_line(ents, rng)
+    prompt += "\n\nEntities: " + ", ".join(f"the {e}" for e in readout_order) + "."
     key = hashlib.sha256(json.dumps(
         ["2ord", family_x, family_y, N, seed, idx, ents], sort_keys=True).encode()).hexdigest()[:16]
     stim = {
