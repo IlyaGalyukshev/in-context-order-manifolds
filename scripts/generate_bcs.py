@@ -14,8 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from icom.generator.bcs import build_stimulus
-from icom.generator.bcs_questions import make_battery
+from icom.generator.bcs import build_stimulus, build_partial_order, build_grid2d
+from icom.generator.bcs_questions import make_battery, make_partial_battery, make_grid_battery
 
 SEED = 20260724
 
@@ -31,6 +31,9 @@ def main():
     ap.add_argument("--conditions", default="shuffle,forward")
     ap.add_argument("--balanced", action="store_true", help="circulant (hardest) variant")
     ap.add_argument("--with-null", action="store_true", default=True)
+    ap.add_argument("--structures", action="store_true",
+                    help="also emit partial-order (2 chains) + 2D-grid stimuli")
+    ap.add_argument("--struct-per-cell", type=int, default=100)
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -70,8 +73,32 @@ def main():
                                            incoherent=True)
                         fn.write(json.dumps(z) + "\n"); n_null += 1
 
+    n_struct = 0
+    if args.structures:
+        with open(out / "stimuli.jsonl", "a") as fs, open(out / "questions.jsonl", "a") as fq:
+            for idx in range(args.struct_per_cell):
+                for fam in fams:
+                    for m in (4, 5, 6):  # chain length -> partial order 2 x m
+                        for cond in conds:
+                            st = build_partial_order(fam, 2, m, SEED, idx, vocab,
+                                                     d=args.degree, condition=cond)
+                            fs.write(json.dumps(st) + "\n"); n_struct += 1
+                            if cond == conds[0]:
+                                for q in make_partial_battery(st):
+                                    fq.write(json.dumps(q) + "\n"); n_q += 1
+                # 2D grids (size x loud)
+                for gx, gy in ((3, 3), (4, 3)):
+                    for cond in conds:
+                        st = build_grid2d("s1_size", "s1_loud", gx, gy, SEED, idx, vocab,
+                                          d=args.degree, condition=cond)
+                        fs.write(json.dumps(st) + "\n"); n_struct += 1
+                        if cond == conds[0]:
+                            for q in make_grid_battery(st):
+                                fq.write(json.dumps(q) + "\n"); n_q += 1
+
     meta = {"families": fams, "n_grid": ngrid, "per_cell": args.per_cell, "degree": args.degree,
-            "conditions": conds, "balanced": args.balanced, "n_stimuli": n_stim,
+            "conditions": conds, "balanced": args.balanced, "n_stimuli": n_stim + n_struct,
+            "n_total_order": n_stim, "n_structures": n_struct,
             "n_questions": n_q, "n_null": n_null, "gate_failures": gate_fail}
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
     print(f"wrote {n_stim} stimuli, {n_q} questions, {n_null} null twins -> {out} "

@@ -435,9 +435,8 @@ def _emit_chain_cards(chain, rel, m, d, rng, cards):
 def _condition_order(cards, ents, chain_of, wrank, condition, rng):
     m = len(cards)
     if condition == "forward":
-        return np.argsort([(chain_of[cards[i]["entity"]], cards[i]["lo"]) for i in range(m)],
-                          kind="stable")
-    return rng.permutation(m)
+        return sorted(range(m), key=lambda i: (chain_of[cards[i]["entity"]], cards[i]["lo"]))
+    return list(rng.permutation(m))
 
 
 def _order_by_min_rank(cards):
