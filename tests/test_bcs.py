@@ -130,15 +130,52 @@ def test_grid2d_two_independent_global_orders():
     assert [g["coord_x"][e] for e in g["latent_order"]] != [g["coord_y"][e] for e in g["latent_order"]]
 
 
-def test_incomparability_questions():
+def test_order_query_family_not_degenerate():
+    """The order-query family MIXES comparable (key=entity) and incomparable
+    (key='undetermined') under identical wording, so a constant answer can't
+    score. Cross-chain => undetermined; same-chain => a determined entity key."""
     from icom.generator.bcs import build_partial_order
     from icom.generator.bcs_questions import make_partial_battery
     s = build_partial_order("s1_size", 2, 5, SEED, 0, VOCAB, d=4, condition="shuffle")
-    qs = make_partial_battery(s)
-    inc = [q for q in qs if q["family"] == "incomparability"]
-    assert inc and all(q["answer_key"] == "undetermined" for q in inc)
-    # cross-chain pairs only
+    qs = [q for q in make_partial_battery(s) if q["family"] == "order_query"]
     ci = s["chain_of"]
-    for q in inc:
-        a, b = q["target_entities"]
-        assert ci[a] != ci[b]
+    und = [q for q in qs if q["answer_key"] == "undetermined"]
+    det = [q for q in qs if q["answer_key"] != "undetermined"]
+    assert und and det, "must contain BOTH determined and undetermined"
+    for q in und:
+        a, b = q["target_entities"]; assert ci[a] != ci[b]      # cross-chain
+    for q in det:
+        a, b = q["target_entities"]; assert ci[a] == ci[b]      # same-chain
+        assert q["answer_key"] in (a, b)
+
+
+def test_coherence_null_always_has_cycle():
+    """Every coherence-null twin must admit NO valid total order (has a cycle)."""
+    from icom.generator.bcs import build_stimulus, _has_cycle
+    import re
+    for idx in range(30):
+        z = build_stimulus("s1_size", 9, SEED, idx, VOCAB, d=4, condition="shuffle",
+                           incoherent=True)
+        ent = {e: i for i, e in enumerate(z["latent_order"])}
+        directed = []
+        for c in z["cards"]:
+            t = c["text"]
+            if " is smaller than " in t:
+                a, b = re.match(r"The (\w+) is smaller than the (\w+)\.", t).groups()
+            else:
+                b, a = re.match(r"The (\w+) is larger than the (\w+)\.", t).groups()
+            directed.append((ent[a], ent[b]))
+        assert _has_cycle(directed, 9), f"null idx={idx} has no cycle (coherent!)"
+
+
+def test_pairwise_pairs_distinct():
+    """Total-order pairwise: no unordered pair is asked more than once (beyond
+    its swap), i.e. distinct pairs per bin (no pseudo-replication)."""
+    from icom.generator.bcs import build_stimulus
+    from icom.generator.bcs_questions import make_battery
+    s = build_stimulus("s1_size", 12, SEED, 0, VOCAB, d=4, condition="shuffle")
+    pw = [q for q in make_battery(s) if q["family"] == "pairwise"]
+    unordered = [frozenset(q["target_entities"]) for q in pw]
+    from collections import Counter
+    c = Counter(unordered)
+    assert all(v == 2 for v in c.values()), f"pairs not distinct: {c.most_common(3)}"

@@ -325,7 +325,7 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
         for e in (c["entity"], c["entity_b"]):
             pos_sum[e] += si; pos_cnt[e] += 1
     meanpos = np.array([pos_sum[e] / max(pos_cnt[e], 1) for e in entities])
-    slots = meanpos.argsort().argsort() + 1  # rank-normalize to 1..N
+    slots = meanpos.argsort().argsort() + 1  # discretized (stored for extraction)
     ranks = np.array([rank_of[e] for e in entities])
 
     prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
@@ -337,7 +337,7 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
         c["latent_rank"] = c["lo"] + 1
 
     report = gate_report(entities, set((c["lo"], c["hi"]) for c in cards), cards,
-                         ranks, slots, d) if not incoherent else {"incoherent": True}
+                         ranks, meanpos, d) if not incoherent else {"incoherent": True}
 
     content_key = hashlib.sha256(
         json.dumps([family, n_items, seed, idx, d, balanced, incoherent, entities, edge_list],
@@ -362,25 +362,34 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
 
 # ---------------------------------------------------------- non-total structures
 def build_partial_order(family: str, n_chains: int, chain_len: int, seed: int, idx: int,
-                        vocab, d: int = 4, condition: str = "shuffle"):
+                        vocab, d: int = 4, condition: str = "shuffle",
+                        chain_lens=None, difficulty: str = None):
     """K disjoint total orders (chains) stated with BCS edges WITHIN each chain
     and NONE across => cross-chain pairs are INCOMPARABLE. Tests whether the
     model represents K separate 1D orders (≥2 components) and respects
     incomparability instead of inventing a single total order.
 
+    chain_lens (list) sets uneven chain sizes so total N can match the total-order
+    grid (e.g. N=9 -> [5,4]); difficulty threads near/far padding into chains.
     Per-entity labels: chain_id + within_chain_rank. There is no global rank.
     """
     rel = RELATIONS[family]
-    rng = rng_for(seed, "bcs_po", family, n_chains, chain_len, seed, idx)
-    N = n_chains * chain_len
+    lens = list(chain_lens) if chain_lens else [chain_len] * n_chains
+    prefer = _prefer(difficulty)
+    rng = rng_for(seed, "bcs_po", family, tuple(lens), seed, idx, difficulty)
+    N = sum(lens)
     ents = [vocab[i] for i in rng.choice(len(vocab), size=N, replace=False)]
-    chains = [ents[c * chain_len:(c + 1) * chain_len] for c in range(n_chains)]
+    chains, off = [], 0
+    for L in lens:
+        chains.append(ents[off:off + L]); off += L
 
     cards = []
     chain_of = {}; wrank = {}
     for c, chain in enumerate(chains):
-        edges = chain_edges(chain_len, d, rng)
-        tail = eulerian_orientation(edges, chain_len)
+        m = len(chain)
+        edges = (chain_edges(m, d, rng) if m <= 2
+                 else sorted(regular_graph_with_path(m, feasible_degree(m, d), rng, prefer=prefer)))
+        tail = eulerian_orientation(edges, m)
         for k, (lo, hi) in enumerate(edges):
             earlier, later = chain[lo], chain[hi]
             if tail[k] == lo:
@@ -418,7 +427,7 @@ def build_partial_order(family: str, n_chains: int, chain_len: int, seed: int, i
 
 
 def build_grid2d(family_x: str, family_y: str, N: int, seed: int, idx: int,
-                 vocab, d: int = 4, condition: str = "shuffle"):
+                 vocab, d: int = 4, condition: str = "shuffle", difficulty: str = None):
     """TWO INDEPENDENT GLOBAL total orders over the SAME N entities: an x-order
     (relation family_x, e.g. size) and an independent y-order (family_y, e.g.
     loudness). Each entity has coord (rank_x, rank_y) in 1..N. Both orders are
@@ -432,9 +441,10 @@ def build_grid2d(family_x: str, family_y: str, N: int, seed: int, idx: int,
     y_chain = [ents[i] for i in yperm]                        # y-rank 1..N along this
     rank_y = {e: r + 1 for r, e in enumerate(y_chain)}
 
+    prefer = _prefer(difficulty)
     cards = []
-    _emit_chain_cards(ents, rx, N, d, rng, cards)             # x comparisons (all N)
-    _emit_chain_cards(y_chain, ry, N, d, rng, cards)          # y comparisons (all N)
+    _emit_chain_cards(ents, rx, N, d, rng, cards, prefer)     # x comparisons (all N)
+    _emit_chain_cards(y_chain, ry, N, d, rng, cards, prefer)  # y comparisons (all N)
 
     order = list(rng.permutation(len(cards))) if condition == "shuffle" else list(range(len(cards)))
     cards = [cards[i] for i in order]
@@ -460,9 +470,10 @@ def build_grid2d(family_x: str, family_y: str, N: int, seed: int, idx: int,
     return stim
 
 
-def _emit_chain_cards(chain, rel, m, d, rng, cards):
+def _emit_chain_cards(chain, rel, m, d, rng, cards, prefer="any"):
     """Append BCS cards ordering `chain` (index r => rank r) by `rel`."""
-    edges = chain_edges(m, d, rng)
+    edges = (chain_edges(m, d, rng) if m <= 2
+             else sorted(regular_graph_with_path(m, feasible_degree(m, d), rng, prefer=prefer)))
     tail = eulerian_orientation(edges, m)
     for k, (lo, hi) in enumerate(edges):
         earlier, later = chain[lo], chain[hi]
@@ -484,12 +495,13 @@ def _order_by_min_rank(cards):
     return np.argsort([c["lo"] for c in cards], kind="stable")
 
 
-def _decorrelated_order(cards, entities, rng, thresh=0.15, tries=6000):
-    """Shuffle card order until each entity's MEAN mention position ⟂ latent rank."""
+def _decorrelated_order(cards, entities, rng, thresh=0.12, tries=12000):
+    """Shuffle card order until each entity's MEAN mention position ⟂ latent rank.
+    Decorrelates the CONTINUOUS mean (not a tie-broken slot) so a probe reading
+    token position can't recover rank; keeps the best of `tries` draws."""
     n = len(entities); m = len(cards)
     ranks = np.arange(1, n + 1)
     ent_idx = {e: r for r, e in enumerate(entities)}
-    # precompute which entities each card touches
     touch = [(ent_idx[c["entity"]], ent_idx[c["entity_b"]]) for c in cards]
     best, best_rho = None, np.inf
     for _ in range(tries):
@@ -499,7 +511,7 @@ def _decorrelated_order(cards, entities, rng, thresh=0.15, tries=6000):
             a, b = touch[ci]
             psum[a] += si; psum[b] += si; pcnt[a] += 1; pcnt[b] += 1
         meanpos = psum / np.maximum(pcnt, 1)
-        rho = abs(np.corrcoef(ranks, meanpos.argsort().argsort() + 1)[0, 1])
+        rho = abs(np.corrcoef(ranks, meanpos)[0, 1])   # continuous mean, not tie-broken
         if rho <= thresh:
             return perm
         if rho < best_rho:
@@ -507,10 +519,36 @@ def _decorrelated_order(cards, entities, rng, thresh=0.15, tries=6000):
     return best
 
 
-def _inject_cycle(edge_list, rng, k=2):
-    """Flip the direction of k edges to create at least one cycle (no total order)."""
-    el = [list(e) for e in edge_list]
-    picks = rng.choice(len(el), size=min(k, len(el)), replace=False)
-    for p in picks:
-        el[p] = [el[p][1], el[p][0]]  # reversed: now hi<lo claim -> inconsistent
-    return [tuple(e) for e in el]
+def _has_cycle(directed_edges, n):
+    """True iff the directed graph (a->b) contains a cycle (Kahn: can't order all)."""
+    succ = {i: set() for i in range(n)}
+    indeg = {i: 0 for i in range(n)}
+    for a, b in directed_edges:
+        if b not in succ[a]:
+            succ[a].add(b); indeg[b] += 1
+    q = [i for i in range(n) if indeg[i] == 0]
+    seen = 0
+    while q:
+        u = q.pop(); seen += 1
+        for v in succ[u]:
+            indeg[v] -= 1
+            if indeg[v] == 0:
+                q.append(v)
+    return seen < n
+
+
+def _inject_cycle(edge_list, rng):
+    """Reverse the claimed direction of ONE non-adjacent edge. With the path
+    {(i,i+1)} intact, this ALWAYS creates a cycle (path lo->..->hi plus the
+    reversed hi->lo), so the twin admits NO valid total order. Verified; if by
+    some degeneracy no cycle results, reverse additional edges until one does.
+    Returns claimed directed edges as (earlier_claim, later_claim) tuples."""
+    n = 1 + max(hi for _, hi in edge_list)
+    directed = [(lo, hi) for lo, hi in edge_list]           # a->b == a earlier
+    nonadj = [i for i, (lo, hi) in enumerate(edge_list) if hi - lo >= 2]
+    order = list(rng.permutation(nonadj if nonadj else list(range(len(edge_list)))))
+    for p in order:
+        directed[p] = (directed[p][1], directed[p][0])       # reverse claim
+        if _has_cycle(directed, n):
+            return directed
+    return directed  # fallback (extremely unlikely to reach without a cycle)

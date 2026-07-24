@@ -50,16 +50,23 @@ def make_battery(stim: dict, *, pairwise_per_bin: int = 4, rank_max: int = 10):
         "List all entities in the order they first appear in the text above, top to bottom.",
         "MENTION_ORDER", "list", span_location="mention_control", target_entities=tuple(order))
 
-    # 2. pairwise SWAP-PAIRED, stratified by rank distance
+    # 2. pairwise SWAP-PAIRED, stratified by rank distance, DISTINCT pairs only
+    # (no pseudo-replication), balanced interior/endpoint within each bin.
     bins = {"d=1": (1, 1), "d=2-3": (2, 3), "d=4-7": (4, 7), "d=8+": (8, N - 1)}
     for b, (lo, hi) in bins.items():
         hi = min(hi, N - 1)
         if lo > hi:
             continue
-        for _ in range(pairwise_per_bin):
-            d = int(rng.integers(lo, hi + 1))
-            i = int(rng.integers(1, N - d + 1))
-            a, b_ent = order[i - 1], order[i + d - 1]     # a earlier than b_ent
+        allpairs = [(order[i - 1], order[i + d - 1], d)
+                    for d in range(lo, hi + 1) for i in range(1, N - d + 1)]
+        rng.shuffle(allpairs)
+        inter = [p for p in allpairs if interior(p[0]) and interior(p[1])]
+        noni = [p for p in allpairs if not (interior(p[0]) and interior(p[1]))]
+        chosen = []
+        while len(chosen) < pairwise_per_bin and (inter or noni):
+            take = inter if (inter and (len(chosen) % 2 == 0 or not noni)) else noni
+            chosen.append(take.pop())
+        for a, b_ent, d in chosen:                       # each pair is DISTINCT
             both_int = interior(a) and interior(b_ent)
             for first, second in ((a, b_ent), (b_ent, a)):  # SWAP PAIR
                 add("pairwise",
@@ -98,22 +105,25 @@ def make_partial_battery(stim: dict, *, per_kind: int = 12):
         qs.append({"stimulus_content_key": ck, "qid": f"{ck}:{fam}:{len(qs)}",
                    "family": fam, "text": text + FMT[fmt], "answer_key": key, **meta})
 
+    # UNIFIED order-query family: comparable (same-chain, key=earlier) AND
+    # incomparable (cross-chain, key='undetermined') under IDENTICAL wording, so
+    # a constant 'undetermined' cannot score — the model must actually decide.
     same = [(a, b) for a in ents for b in ents if a < b and chain_of[a] == chain_of[b]]
     diff = [(a, b) for a in ents for b in ents if a < b and chain_of[a] != chain_of[b]]
     rng.shuffle(same); rng.shuffle(diff)
-    for a, b in same[:per_kind]:
-        earlier = a if wrank[a] < wrank[b] else b
-        for first, second in ((a, b), (b, a)):
-            add("pairwise", f"By the relations above, which is {rel.cmp_low}: the "
-                            f"{first} or the {second}?", earlier, "choice",
-                comparable=True, target_entities=(first, second))
-    for a, b in diff[:per_kind]:
-        add("incomparability",
-            f"Using only the relations stated, is it determined which is {rel.cmp_low}, "
-            f"the {a} or the {b}? Answer with the {rel.cmp_low} entity's name if "
-            f"determined, otherwise answer 'undetermined'. Reply with one word only.",
-            "undetermined", "_none",
-            comparable=False, target_entities=(a, b))
+
+    def order_query(a, b, key, comparable):
+        for first, second in ((a, b), (b, a)):           # swap-paired
+            add("order_query",
+                f"Using only the relations stated, is it determined which is "
+                f"{rel.cmp_low}, the {first} or the {second}? Answer with that "
+                f"entity's name if determined, otherwise answer 'undetermined'.",
+                key, "_none", comparable=comparable, target_entities=(first, second))
+
+    for a, b in same[:per_kind]:                          # comparable -> key = earlier
+        order_query(a, b, a if wrank[a] < wrank[b] else b, True)
+    for a, b in diff[:per_kind]:                          # incomparable -> 'undetermined'
+        order_query(a, b, "undetermined", False)
     return qs
 
 

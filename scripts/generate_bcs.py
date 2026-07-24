@@ -78,26 +78,32 @@ def main():
 
     n_struct = 0
     if args.structures:
-        with open(out / "stimuli.jsonl", "a") as fs, open(out / "questions.jsonl", "a") as fq:
-            for idx in range(args.struct_per_cell):
-                for fam in fams:
-                    for m in (4, 5, 6):  # chain length -> partial order 2 x m
+        # structures on the SAME N grid as total-order (>=9: need 2 chains >=4),
+        # up-sampled to per_cell, WITH difficulty variants, WITH null twins.
+        struct_N = [N for N in ngrid if N >= 8]
+        with open(out / "stimuli.jsonl", "a") as fs, open(out / "questions.jsonl", "a") as fq, \
+             open(out / "stimuli_null.jsonl", "a") as fn:
+            for diff in diffs:
+                for idx in range(args.per_cell):
+                    for N in struct_N:
+                        clens = [N - N // 2, N // 2]          # 2 chains summing to N
                         for cond in conds:
-                            st = build_partial_order(fam, 2, m, SEED, idx, vocab,
-                                                     d=args.degree, condition=cond)
+                            st = build_partial_order(fams[0], 2, 0, SEED, idx, vocab,
+                                                     d=args.degree, condition=cond,
+                                                     chain_lens=clens, difficulty=diff)
+                            st["difficulty"] = diff
                             fs.write(json.dumps(st) + "\n"); n_struct += 1
                             if cond == conds[0]:
                                 for q in make_partial_battery(st):
                                     fq.write(json.dumps(q) + "\n"); n_q += 1
-                # two independent global orders over N entities (2D)
-                for Ngrid in (9, 12):
-                    for cond in conds:
-                        st = build_grid2d("s1_size", "s1_loud", Ngrid, SEED, idx, vocab,
-                                          d=args.degree, condition=cond)
-                        fs.write(json.dumps(st) + "\n"); n_struct += 1
-                        if cond == conds[0]:
-                            for q in make_grid_battery(st):
-                                fq.write(json.dumps(q) + "\n"); n_q += 1
+                        for cond in conds:
+                            st = build_grid2d("s1_size", "s1_loud", N, SEED, idx, vocab,
+                                              d=args.degree, condition=cond, difficulty=diff)
+                            st["difficulty"] = diff
+                            fs.write(json.dumps(st) + "\n"); n_struct += 1
+                            if cond == conds[0]:
+                                for q in make_grid_battery(st):
+                                    fq.write(json.dumps(q) + "\n"); n_q += 1
 
     meta = {"families": fams, "n_grid": ngrid, "per_cell": args.per_cell, "degree": args.degree,
             "conditions": conds, "difficulty": args.difficulty, "n_stimuli": n_stim + n_struct,
