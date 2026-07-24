@@ -86,10 +86,10 @@ def main():
                             if cond == conds[0]:
                                 for q in make_partial_battery(st):
                                     fq.write(json.dumps(q) + "\n"); n_q += 1
-                # 2D grids (size x loud)
-                for gx, gy in ((3, 3), (4, 3)):
+                # two independent global orders over N entities (2D)
+                for Ngrid in (9, 12):
                     for cond in conds:
-                        st = build_grid2d("s1_size", "s1_loud", gx, gy, SEED, idx, vocab,
+                        st = build_grid2d("s1_size", "s1_loud", Ngrid, SEED, idx, vocab,
                                           d=args.degree, condition=cond)
                         fs.write(json.dumps(st) + "\n"); n_struct += 1
                         if cond == conds[0]:

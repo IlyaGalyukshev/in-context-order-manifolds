@@ -375,29 +375,26 @@ def build_partial_order(family: str, n_chains: int, chain_len: int, seed: int, i
     return stim
 
 
-def build_grid2d(family_x: str, family_y: str, gx: int, gy: int, seed: int, idx: int,
+def build_grid2d(family_x: str, family_y: str, N: int, seed: int, idx: int,
                  vocab, d: int = 4, condition: str = "shuffle"):
-    """N=gx*gy entities on a grid with two INDEPENDENT latent coordinates
-    (x via relation family_x, y via family_y). Relations sampled within rows
-    (x-comparisons) and columns (y-comparisons), degree-balanced per axis.
-    Tests whether a 2D manifold forms with x and y separately decodable."""
+    """TWO INDEPENDENT GLOBAL total orders over the SAME N entities: an x-order
+    (relation family_x, e.g. size) and an independent y-order (family_y, e.g.
+    loudness). Each entity has coord (rank_x, rank_y) in 1..N. Both orders are
+    fully determined (BCS comparisons over all N per axis). Tests whether a 2D
+    manifold forms with x and y separately decodable and disentangled."""
     rx, ry = RELATIONS[family_x], RELATIONS[family_y]
-    rng = rng_for(seed, "bcs_grid", family_x, family_y, gx, gy, seed, idx)
-    N = gx * gy
+    rng = rng_for(seed, "bcs_2ord", family_x, family_y, N, seed, idx)
     ents = [vocab[i] for i in rng.choice(len(vocab), size=N, replace=False)]
-    coord = {ents[r * gy + c]: (r + 1, c + 1) for r in range(gx) for c in range(gy)}
+    rank_x = {e: i + 1 for i, e in enumerate(ents)}          # x-order = listing
+    yperm = list(rng.permutation(N))                          # independent y-order
+    y_chain = [ents[i] for i in yperm]                        # y-rank 1..N along this
+    rank_y = {e: r + 1 for r, e in enumerate(y_chain)}
 
     cards = []
-    # x-comparisons: within each column (same y), order the gx entities by x
-    for c in range(gy):
-        col = [ents[r * gy + c] for r in range(gx)]
-        _emit_chain_cards(col, rx, gx, d, rng, cards)
-    # y-comparisons: within each row (same x), order the gy entities by y
-    for r in range(gx):
-        row = [ents[r * gy + c] for c in range(gy)]
-        _emit_chain_cards(row, ry, gy, d, rng, cards)
+    _emit_chain_cards(ents, rx, N, d, rng, cards)             # x comparisons (all N)
+    _emit_chain_cards(y_chain, ry, N, d, rng, cards)          # y comparisons (all N)
 
-    order = rng.permutation(len(cards)) if condition == "shuffle" else np.arange(len(cards))
+    order = list(rng.permutation(len(cards))) if condition == "shuffle" else list(range(len(cards)))
     cards = [cards[i] for i in order]
     for slot, cc in enumerate(cards, 1):
         cc["presentation_slot"] = slot; cc["latent_rank"] = 0
@@ -405,12 +402,12 @@ def build_grid2d(family_x: str, family_y: str, gx: int, gy: int, seed: int, idx:
     preamble = " ".join(p for p in (rx.preamble, ry.preamble) if p)
     prompt = (preamble + "\n\n" if preamble else "") + "\n".join(cc["text"] for cc in cards)
     key = hashlib.sha256(json.dumps(
-        ["grid", family_x, family_y, gx, gy, seed, idx, ents], sort_keys=True).encode()).hexdigest()[:16]
+        ["2ord", family_x, family_y, N, seed, idx, ents], sort_keys=True).encode()).hexdigest()[:16]
     stim = {
         "family": f"{family_x}|{family_y}", "structure": "grid2d", "condition": condition,
-        "n_items": N, "gx": gx, "gy": gy, "seed": seed, "degree": d,
+        "n_items": N, "seed": seed, "degree": d,
         "latent_order": list(ents),
-        "coord_x": {e: coord[e][0] for e in ents}, "coord_y": {e: coord[e][1] for e in ents},
+        "coord_x": {e: rank_x[e] for e in ents}, "coord_y": {e: rank_y[e] for e in ents},
         "cards": [{"entity": cc["entity"], "entity_b": cc["entity_b"], "text": cc["text"],
                    "latent_rank": 0, "presentation_slot": cc["presentation_slot"]} for cc in cards],
         "prompt": prompt, "content_key": key,

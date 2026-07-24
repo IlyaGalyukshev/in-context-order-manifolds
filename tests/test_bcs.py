@@ -117,14 +117,17 @@ def test_partial_order_no_cross_chain_edges():
             assert len(degs) == 1, degs  # rank-invariant mention count within chain
 
 
-def test_grid2d_two_axes():
+def test_grid2d_two_independent_global_orders():
     from icom.generator.bcs import build_grid2d
-    g = build_grid2d("s1_size", "s1_loud", 3, 3, SEED, 0, VOCAB, d=4, condition="shuffle")
+    g = build_grid2d("s1_size", "s1_loud", 9, SEED, 0, VOCAB, d=4, condition="shuffle")
     assert g["n_items"] == 9
-    assert "smaller than" in g["prompt"] or "larger than" in g["prompt"]
-    assert "louder than" in g["prompt"] or "quieter than" in g["prompt"]
-    xs = {g["coord_x"][e] for e in g["latent_order"]}
-    assert xs == {1, 2, 3}
+    assert ("smaller than" in g["prompt"] or "larger than" in g["prompt"])
+    assert ("louder than" in g["prompt"] or "quieter than" in g["prompt"])
+    # both coordinates are GLOBAL total orders 1..N (every cross-pair determined)
+    assert {g["coord_x"][e] for e in g["latent_order"]} == set(range(1, 10))
+    assert {g["coord_y"][e] for e in g["latent_order"]} == set(range(1, 10))
+    # x and y independent: not the same ranking
+    assert [g["coord_x"][e] for e in g["latent_order"]] != [g["coord_y"][e] for e in g["latent_order"]]
 
 
 def test_incomparability_questions():

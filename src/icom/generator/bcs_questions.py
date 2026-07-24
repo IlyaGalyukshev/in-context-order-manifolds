@@ -18,7 +18,8 @@ from icom.utils.seeding import rng_for
 FMT = {"name": " Reply with only the entity name. No explanation.",
        "choice": " Reply with only one entity name. No explanation.",
        "number": " Reply with only the number. No explanation.",
-       "list": " Reply with one entity name per line, nothing else."}
+       "list": " Reply with one entity name per line, nothing else.",
+       "_none": ""}  # question already carries its own format instruction
 
 
 def _bin(d):
@@ -109,8 +110,9 @@ def make_partial_battery(stim: dict, *, per_kind: int = 12):
     for a, b in diff[:per_kind]:
         add("incomparability",
             f"Using only the relations stated, is it determined which is {rel.cmp_low}, "
-            f"the {a} or the {b}? Reply with the entity name if determined, or "
-            f"'undetermined'.", "undetermined", "choice",
+            f"the {a} or the {b}? Answer with the {rel.cmp_low} entity's name if "
+            f"determined, otherwise answer 'undetermined'. Reply with one word only.",
+            "undetermined", "_none",
             comparable=False, target_entities=(a, b))
     return qs
 
