@@ -41,21 +41,22 @@ class Relation:
     name: str
     fwd: str          # "a REL b" asserts rank(a) < rank(b), a named first
     inv: str          # "b REL_inv a" asserts the same, b named first
-    low_pole: str     # reconstruction wording: from {low_pole} to {high_pole}
-    high_pole: str
+    low_pole: str     # reconstruction superlative for rank 1 ("smallest", "first")
+    high_pole: str    # reconstruction superlative for rank N
+    cmp_low: str      # pairwise comparative ("smaller", "earlier in the order")
     preamble: str = ""  # optional in-context transitivity declaration (S0)
 
 
 RELATIONS = {
     # S0 — arbitrary symbolic, transitivity declared in-context
     "s0_zib": Relation(
-        "s0_zib", "zibs", "is zibbed by", "first", "last",
-        preamble="In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z.",
+        "s0_zib", "zibs", "is zibbed by", "first", "last", "earlier in the zib-order",
+        preamble="In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.",
     ),
     # S1 — meaningful transitive comparatives over nonce entities
-    "s1_size": Relation("s1_size", "is smaller than", "is larger than", "smallest", "largest"),
-    "s1_loud": Relation("s1_loud", "is quieter than", "is louder than", "quietest", "loudest"),
-    "s1_heat": Relation("s1_heat", "is cooler than", "is hotter than", "coolest", "hottest"),
+    "s1_size": Relation("s1_size", "is smaller than", "is larger than", "smallest", "largest", "smaller"),
+    "s1_loud": Relation("s1_loud", "is quieter than", "is louder than", "quietest", "loudest", "quieter"),
+    "s1_heat": Relation("s1_heat", "is cooler than", "is hotter than", "coolest", "hottest", "cooler"),
 }
 # S2 (grounded magnitude with a nonce unit) is generated specially — see below.
 
