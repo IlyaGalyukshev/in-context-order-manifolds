@@ -59,14 +59,24 @@ def main() -> None:
             skipped += 1
             continue
         rec = extract_pooled(model, tok, st, is_instruct, device=args.device)
+        # structure coordinates (Phase-E ready): grid axes / partial-order chains,
+        # ordered to match latent_order so probes can read them alongside `ranks`.
+        extra = {}
+        if "coord_x" in st:
+            extra["coord_x"] = np.array([st["coord_x"][e] for e in st["latent_order"]])
+            extra["coord_y"] = np.array([st["coord_y"][e] for e in st["latent_order"]])
+        if "within_rank" in st:
+            extra["within_rank"] = np.array([st["within_rank"][e] for e in st["latent_order"]])
+            extra["chain_of"] = np.array([st["chain_of"][e] for e in st["latent_order"]])
         np.savez_compressed(
             path,
             ranks=rec["ranks"], slots=rec["slots"],
             entities=json.dumps(st["latent_order"]),
             meta=json.dumps({"family": st["family"], "condition": st["condition"],
                              "n_items": st["n_items"], "content_key": st["content_key"],
+                             "structure": st.get("structure", "total_order"),
                              "n_tokens": rec["n_tokens"], "model": args.model}),
-            **rec["pooled"],
+            **rec["pooled"], **extra,
         )
         done += 1
         if done <= 3:

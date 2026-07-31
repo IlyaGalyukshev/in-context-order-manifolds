@@ -61,6 +61,12 @@ Confound controls are **first-class metrics**, not afterthoughts:
 │   ├── extraction/            # residual-stream capture (HF hooks); pools per entity on the fly
 │   │   ├── hooks.py           #   one forward pass/stimulus; never dumps full [L×T×D]
 │   │   └── pooling.py         #   readout(roster) / name / last-token / card-mean schemes
+│   ├── probes/                # offline probe catalog (pure CPU numpy/sklearn/scipy)
+│   │   ├── linear.py          #   interior-only ridge rank probe + perm null + per-rank MAE
+│   │   ├── nonlinear.py       #   MLP probe (curvature signature)
+│   │   ├── geometry.py        #   RSA (dist vs |Δrank|), TwoNN intrinsic dim, projections
+│   │   ├── transfer.py        #   cross-condition / N / family generalization
+│   │   └── depth.py           #   onset / peak / band from a per-layer profile
 │   ├── battery/               # behavioral eval (HF runner) — client.py + scoring.py
 │   └── utils/seeding.py       # deterministic (config, seed) → identical artifacts
 ├── scripts/
@@ -69,13 +75,16 @@ Confound controls are **first-class metrics**, not afterthoughts:
 │   ├── run_battery.py         # behavior gate (must precede geometry)
 │   ├── extract_activations.py # pooled [N × layers × D] per stimulus
 │   ├── probe_interior.py      # PRIMARY: interior-only rank probe per layer + perm/coherence nulls
+│   ├── probe_sweep.py         # Phase-C: full probe catalog over all layers → long CSV + summary
 │   ├── probe_rank.py          # all-ranks layer sweep (all-vs-interior comparison)
+│   ├── visualize_manifold.py  # Phase-D: 2D/3D projections colored by rank + null-control row
+│   ├── benchmark_strata.py    # analysis-ready category breakdown of a generated dataset
 │   ├── audit_confounds.py / adv_confound_audit.py / adv_decode.py  # data-level confound audits
 │   ├── deploy_knockout.py / steer_rank.py   # deployment / causal tests
-│   ├── visualize_manifold.py  # (planned) 2D/3D projections colored by rank + null controls
 │   └── smoke_v100.py          # per-model fp16 admission test (V100)
 ├── docs/RESEARCH_PLAN.md      # the wide sweep, decision tree, visualization deliverables
-└── tests/test_bcs.py          # 32 generation invariants (all six confound gates, per config)
+├── docs/benchmark_strata.md   # committed strata for the full question set
+└── tests/                     # test_bcs.py (35 generation invariants) + test_probes.py (probe catalog)
 ```
 
 Every dataset is deterministic from `(config, seed)`; the per-stimulus path never calls an API (LLMs only author the committed predicate pool, offline).

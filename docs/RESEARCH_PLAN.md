@@ -165,10 +165,22 @@ the architecture lever in one figure. The manifold picture visualizes it;
 everything else in the sweep refines it.
 
 ## Implementation status
-Instrument built and audited (BCS generator, battery, extraction, interior
-probe, confound audit; `tests/test_bcs.py` = 32 invariants). Still to add before
-the wide run: the new query families in `bcs_questions.py`
-(betweenness/successor/count-between/comparative-distance); the query-token
-extraction pass; the nonlinear/RSA/intrinsic-dim/transfer probe scripts;
-`scripts/visualize_manifold.py`; and the SSM/MoE `smoke_v100.py` extension
-(forward + hidden-state exposure + router logits). No headline results yet.
+Built and verified on CPU:
+- BCS generator + full question battery incl. the metric families
+  (betweenness/successor/count-between/comparative-distance/extremes);
+  `tests/test_bcs.py` = 35 invariants.
+- Offline probe catalog `src/icom/probes/` (linear interior + perm null,
+  per-rank MAE, nonlinear/curvature, RSA, TwoNN intrinsic dim, transfer, depth)
+  driven by `scripts/probe_sweep.py`; the 2D/3D visualizer
+  `scripts/visualize_manifold.py`; `tests/test_probes.py` = 9 tests on synthetic
+  activations (interior survives on a planted manifold, collapses on noise;
+  TwoNN recovers dimension; nonlinear beats linear on a curved manifold;
+  transfer across N; projection axis tracks rank). `benchmark_strata.py` +
+  committed strata.
+- `extract_activations.py` stores structure coordinates (grid axes / partial
+  chains) for Phase E.
+
+Remaining, GPU-side (implement at bring-up where they can be smoke-tested):
+the query-token extraction pass (Result-C locus) and the SSM/MoE `smoke_v100.py`
+extension (forward + hidden-state exposure + router logits). No headline results
+yet — extraction awaits a card.
