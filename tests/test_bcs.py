@@ -179,3 +179,71 @@ def test_pairwise_pairs_distinct():
     from collections import Counter
     c = Counter(unordered)
     assert all(v == 2 for v in c.values()), f"pairs not distinct: {c.most_common(3)}"
+
+
+def _order_rank(s):
+    order = s["latent_order"]
+    return order, {e: i + 1 for i, e in enumerate(order)}
+
+
+def test_metric_family_keys_correct():
+    """Every metric-family key is independently recomputable from latent_order,
+    across S0/S1 families and N — a wrong key would silently corrupt accuracy."""
+    from icom.generator.bcs_questions import make_battery
+    for fam in ("s0_zib", "s1_size", "s1_loud"):
+        for N in (7, 9, 12, 16):
+            s = build_stimulus(fam, N, SEED, N, VOCAB, d=4, condition="shuffle")
+            order, rank = _order_rank(s)
+            for q in make_battery(s):
+                f, k, te = q["family"], q["answer_key"], q.get("target_entities", ())
+                if f == "betweenness":
+                    assert k == sorted(te, key=lambda e: rank[e])[1]
+                elif f == "successor":
+                    assert k == order[rank[te[0]]]              # rank(x)+1
+                elif f == "predecessor":
+                    assert k == order[rank[te[0]] - 2]          # rank(x)-1
+                elif f == "count_between":
+                    a, b = te
+                    assert k == str(abs(rank[a] - rank[b]) - 1)
+                elif f == "comparative_distance":
+                    x, a, b = te
+                    near = a if abs(rank[a] - rank[x]) < abs(rank[b] - rank[x]) else b
+                    assert k == near
+                elif f == "extremes":
+                    assert k == te[0] and k in (order[0], order[-1])
+
+
+def test_metric_families_present_and_interior_flagged():
+    """All new families are emitted; interior-answerable items exist (so
+    interior-only accuracy is computable); extremes are ALWAYS endpoint-only."""
+    from icom.generator.bcs_questions import make_battery
+    qs = make_battery(build_stimulus("s1_size", 12, SEED, 1, VOCAB, d=4, condition="shuffle"))
+    fams = Counter(q["family"] for q in qs)
+    for f in ("betweenness", "successor", "predecessor", "count_between",
+              "comparative_distance", "extremes"):
+        assert fams[f] > 0, f
+    for f in ("betweenness", "successor", "predecessor", "count_between", "comparative_distance"):
+        assert any(q["family"] == f and q.get("interior_ok") for q in qs), f
+    assert all(q.get("interior_ok") is False and q.get("is_endpoint")
+               for q in qs if q["family"] == "extremes")
+
+
+def test_metric_families_not_degenerate():
+    """Keys/positions aren't constant: comparative answer uses both slots,
+    betweenness middle appears in every shown position, count_between spans
+    multiple values (a constant answer could otherwise score)."""
+    from icom.generator.bcs_questions import make_battery
+    cmp_pos, btw_pos, cb_vals = Counter(), Counter(), set()
+    for idx in range(30):
+        s = build_stimulus("s1_size", 12, SEED, idx, VOCAB, d=4, condition="shuffle")
+        for q in make_battery(s):
+            if q["family"] == "comparative_distance":
+                shown = q["target_entities"][1:]
+                cmp_pos["first" if q["answer_key"] == shown[0] else "second"] += 1
+            elif q["family"] == "betweenness":
+                shown = list(q["target_entities"]); btw_pos[shown.index(q["answer_key"])] += 1
+            elif q["family"] == "count_between":
+                cb_vals.add(int(q["answer_key"]))
+    assert min(cmp_pos.values()) / sum(cmp_pos.values()) > 0.3   # both option slots used
+    assert set(btw_pos) == {0, 1, 2}                             # middle lands in every slot
+    assert len(cb_vals) >= 4                                     # distance values spread

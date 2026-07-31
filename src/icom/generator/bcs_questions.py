@@ -6,8 +6,21 @@ Reworded to remove the v1 ambiguities:
   first-named bias cancels at the item level; each is flagged interior/endpoint
   and by rank-distance so accuracy can be reported interior-only.
 - rank uses "position in the order" only when no number is present (S0/S1).
-- adjacency is dropped from order metrics (in BCS the successor is generally
-  not stated in a single card, but we still don't treat it as order signal).
+
+Metric families (added v2.1) — together they test whether BEHAVIOUR reads the
+same metric a manifold would encode, all under the position framing (the
+`low_pole` as position 1) so they are relation-agnostic (work for S0 too):
+- betweenness       — which of three has the MIDDLE rank (ordinal interval).
+- successor/predecessor — the immediately-next entity (local order resolution).
+- count_between     — how many entities strictly between X and Y (|Δrank|-1,
+                      absolute ordinal distance).
+- comparative_distance — which of two is closer to a pivot (relative metric).
+- extremes          — the overall pole; ENDPOINT-DIAGNOSTIC only (interior_ok
+                      is always False), a positive control, never a geometry
+                      claim.
+Every family carries `interior_ok` (all involved entities in ranks 3..N-2) so
+interior-only accuracy is computable, and is swap-/order-randomised so option
+position does not leak the key.
 """
 
 from __future__ import annotations
@@ -26,7 +39,9 @@ def _bin(d):
     return "d=1" if d == 1 else "d=2-3" if d <= 3 else "d=4-7" if d <= 7 else "d=8+"
 
 
-def make_battery(stim: dict, *, pairwise_per_bin: int = 4, rank_max: int = 10):
+def make_battery(stim: dict, *, pairwise_per_bin: int = 4, rank_max: int = 10,
+                 betweenness_n: int = 6, succ_pred_n: int = 5,
+                 count_between_n: int = 6, comparative_n: int = 6):
     rel = RELATIONS[stim["relation"]]
     order = stim["latent_order"]
     N = len(order)
@@ -39,6 +54,15 @@ def make_battery(stim: dict, *, pairwise_per_bin: int = 4, rank_max: int = 10):
     def add(fam, text, key, fmt, **meta):
         qs.append({"stimulus_content_key": ck, "qid": f"{ck}:{fam}:{len(qs)}",
                    "family": fam, "text": text + FMT[fmt], "answer_key": key, **meta})
+
+    def interleave(inter, noni, k):
+        """Take up to k, alternating interior-first so interior items are
+        represented whenever they exist (mirrors the pairwise discipline)."""
+        out = []
+        while len(out) < k and (inter or noni):
+            take = inter if (inter and (len(out) % 2 == 0 or not noni)) else noni
+            out.append(take.pop())
+        return out
 
     # 1. reconstruction (to the relation poles), + mention-order control twin
     add("reconstruction",
@@ -89,6 +113,84 @@ def make_battery(stim: dict, *, pairwise_per_bin: int = 4, rank_max: int = 10):
                     f"{rel.low_pole} as position 1?",
             order[k], "name", is_endpoint=(k in (0, N - 1)),
             both_interior=interior(order[k]), target_entities=(order[k],))
+
+    # 4. betweenness — which of three has the MIDDLE rank (ordinal interval).
+    triples = [(order[i], order[j], order[k]) for i in range(N)
+               for j in range(i + 1, N) for k in range(j + 1, N)]
+    rng.shuffle(triples)
+    tin = [t for t in triples if all(interior(e) for e in t)]
+    tno = [t for t in triples if not all(interior(e) for e in t)]
+    for tri in interleave(tin, tno, betweenness_n):
+        mid = sorted(tri, key=lambda e: rank[e])[1]
+        shown = list(tri); rng.shuffle(shown)
+        add("betweenness",
+            f"Using only the relations stated, which of these is between the "
+            f"other two in the order (counting the {rel.low_pole} as position 1): "
+            f"the {shown[0]}, the {shown[1]}, or the {shown[2]}?",
+            mid, "choice", interior_ok=all(interior(e) for e in tri),
+            span=int(max(rank[e] for e in tri) - min(rank[e] for e in tri)),
+            target_entities=tuple(shown))
+
+    # 5. successor / predecessor — the immediately-next entity (local resolution).
+    def add_adj(fam, word, cues, ans_of, toward):
+        cin = [i for i in cues if interior(order[i]) and interior(ans_of(i))]
+        cno = [i for i in cues if not (interior(order[i]) and interior(ans_of(i)))]
+        rng.shuffle(cin); rng.shuffle(cno)
+        for i in interleave(cin, cno, succ_pred_n):
+            x, y = order[i], ans_of(i)
+            add(fam,
+                f"Using only the relations stated, which entity is immediately "
+                f"{word} the {x} in the order (the next position toward the "
+                f"{toward}, counting the {rel.low_pole} as position 1)?",
+                y, "name", interior_ok=(interior(x) and interior(y)),
+                rank_distance=1, target_entities=(x,))
+    add_adj("successor", "after", list(range(N - 1)), lambda i: order[i + 1], rel.high_pole)
+    add_adj("predecessor", "before", list(range(1, N)), lambda i: order[i - 1], rel.low_pole)
+
+    # 6. count_between — |rank difference| - 1 (absolute ordinal distance).
+    cbpairs = [(order[i], order[j]) for i in range(N) for j in range(i + 1, N)]
+    rng.shuffle(cbpairs)
+    cin = [p for p in cbpairs if interior(p[0]) and interior(p[1])]
+    cno = [p for p in cbpairs if not (interior(p[0]) and interior(p[1]))]
+    for a, b in interleave(cin, cno, count_between_n):
+        d = abs(rank[a] - rank[b])
+        shown = [a, b]; rng.shuffle(shown)
+        add("count_between",
+            f"Using only the relations stated, how many entities are strictly "
+            f"between the {shown[0]} and the {shown[1]} in the order?",
+            str(d - 1), "number", rank_distance=int(d),
+            interior_ok=(interior(a) and interior(b)), target_entities=tuple(shown))
+
+    # 7. comparative_distance — which of two is closer to a pivot (no ties).
+    comp = [(pi, ai, bi) for pi in range(N) for ai in range(N)
+            for bi in range(ai + 1, N)
+            if pi not in (ai, bi) and abs(pi - ai) != abs(pi - bi)]
+    rng.shuffle(comp)
+    cin = [t for t in comp if all(interior(order[k]) for k in t)]
+    cno = [t for t in comp if not all(interior(order[k]) for k in t)]
+    for pi, ai, bi in interleave(cin, cno, comparative_n):
+        x, a, b = order[pi], order[ai], order[bi]
+        da, db = abs(pi - ai), abs(pi - bi)
+        key = a if da < db else b
+        shown = [a, b]; rng.shuffle(shown)
+        add("comparative_distance",
+            f"Using only the relations stated, which is closer to the {x} in the "
+            f"order: the {shown[0]} or the {shown[1]}?",
+            key, "choice", interior_ok=all(interior(order[k]) for k in (pi, ai, bi)),
+            d_near=int(min(da, db)), d_far=int(max(da, db)),
+            target_entities=(x, shown[0], shown[1]))
+
+    # 8. extremes — ENDPOINT-DIAGNOSTIC only (never interior; positive control).
+    # Anchored to "in the order" so the S0 poles ("first"/"last") cannot be
+    # misread as mention-position rather than rank.
+    add("extremes", f"Using only the relations stated, which entity is the "
+                    f"{rel.low_pole} of all — the one that comes before every "
+                    f"other entity in the order?", order[0], "name",
+        is_endpoint=True, interior_ok=False, target_entities=(order[0],))
+    add("extremes", f"Using only the relations stated, which entity is the "
+                    f"{rel.high_pole} of all — the one that comes after every "
+                    f"other entity in the order?", order[-1], "name",
+        is_endpoint=True, interior_ok=False, target_entities=(order[-1],))
     return qs
 
 

@@ -1,0 +1,337 @@
+{
+  "dataset": "data/bcs",
+  "meta": {
+    "families": [
+      "s0_zib",
+      "s1_size",
+      "s1_loud"
+    ],
+    "n_grid": [
+      7,
+      9,
+      12,
+      16
+    ],
+    "per_cell": 120,
+    "degree": 4,
+    "conditions": [
+      "shuffle",
+      "forward"
+    ],
+    "difficulty": "both",
+    "n_stimuli": 8640,
+    "n_total_order": 5760,
+    "n_structures": 2880,
+    "n_questions": 267840,
+    "n_null": 2880,
+    "gate_failures": 0
+  },
+  "n_stimuli": 8640,
+  "n_stimuli_by_structure": {
+    "total_order": 5760,
+    "partial_order": 1440,
+    "grid2d": 1440
+  },
+  "n_stimuli_by_structure_condition": {
+    "grid2d/forward": 720,
+    "grid2d/shuffle": 720,
+    "partial_order/forward": 720,
+    "partial_order/shuffle": 720,
+    "total_order/forward": 2880,
+    "total_order/shuffle": 2880
+  },
+  "n_null_twins": 2880,
+  "n_questions": 267840,
+  "orphan_questions": 0,
+  "families": {
+    "betweenness": {
+      "n": 17280,
+      "interior_answerable": 7200,
+      "interior_pct": 41.7,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 472,
+      "top_key_share": 0.004,
+      "chance": "0.33 (3-choice)",
+      "rank_distance_hist": {},
+      "by_N": {
+        "7": 4320,
+        "9": 4320,
+        "12": 4320,
+        "16": 4320
+      }
+    },
+    "comparative_distance": {
+      "n": 17280,
+      "interior_answerable": 7920,
+      "interior_pct": 45.8,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 472,
+      "top_key_share": 0.004,
+      "chance": "0.50 (2-choice)",
+      "rank_distance_hist": {},
+      "by_N": {
+        "7": 4320,
+        "9": 4320,
+        "12": 4320,
+        "16": 4320
+      }
+    },
+    "count_between": {
+      "n": 17280,
+      "interior_answerable": 8640,
+      "interior_pct": 50.0,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 15,
+      "top_key_share": 0.256,
+      "chance": "const-0 ~26%; report by rank_distance / MAE, not 1/(N-1)",
+      "rank_distance_hist": {
+        "1": 4424,
+        "2": 3273,
+        "3": 2368,
+        "4": 1853,
+        "5": 1414,
+        "6": 1080,
+        "7": 798,
+        "8": 612,
+        "9": 449,
+        "10": 369,
+        "11": 252,
+        "12": 141,
+        "13": 125,
+        "14": 81,
+        "15": 41
+      },
+      "by_N": {
+        "7": 4320,
+        "9": 4320,
+        "12": 4320,
+        "16": 4320
+      }
+    },
+    "extremes": {
+      "n": 5760,
+      "interior_answerable": 0,
+      "interior_pct": 0.0,
+      "endpoint_diagnostic": 5760,
+      "distinct_keys": 469,
+      "top_key_share": 0.005,
+      "chance": "~1/N (endpoint-diagnostic)",
+      "rank_distance_hist": {},
+      "by_N": {
+        "7": 1440,
+        "9": 1440,
+        "12": 1440,
+        "16": 1440
+      }
+    },
+    "order_query": {
+      "n": 34560,
+      "interior_answerable": 0,
+      "interior_pct": 0.0,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 473,
+      "top_key_share": 0.5,
+      "chance": "0.50 (2-choice + 'undetermined')",
+      "rank_distance_hist": {},
+      "by_N": {
+        "9": 11520,
+        "12": 11520,
+        "16": 11520
+      }
+    },
+    "pairwise": {
+      "n": 116640,
+      "interior_answerable": 31680,
+      "interior_pct": 27.2,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 472,
+      "top_key_share": 0.004,
+      "chance": "0.50 (2-choice)",
+      "rank_distance_hist": {
+        "1": 23040,
+        "2": 12744,
+        "3": 10296,
+        "4": 9154,
+        "5": 6322,
+        "6": 4664,
+        "7": 2900,
+        "8": 5302,
+        "9": 3174,
+        "10": 2094,
+        "11": 1286,
+        "12": 430,
+        "13": 356,
+        "14": 212,
+        "15": 106
+      },
+      "by_N": {
+        "7": 17280,
+        "9": 30240,
+        "12": 34560,
+        "16": 34560
+      }
+    },
+    "predecessor": {
+      "n": 14400,
+      "interior_answerable": 7920,
+      "interior_pct": 55.0,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 472,
+      "top_key_share": 0.004,
+      "chance": "~1/N",
+      "rank_distance_hist": {
+        "1": 14400
+      },
+      "by_N": {
+        "7": 3600,
+        "9": 3600,
+        "12": 3600,
+        "16": 3600
+      }
+    },
+    "rank": {
+      "n": 24480,
+      "interior_answerable": 15254,
+      "interior_pct": 62.3,
+      "endpoint_diagnostic": 4613,
+      "distinct_keys": 488,
+      "top_key_share": 0.049,
+      "chance": "~1/N",
+      "rank_distance_hist": {},
+      "by_N": {
+        "7": 4320,
+        "9": 5760,
+        "12": 7200,
+        "16": 7200
+      }
+    },
+    "reconstruction": {
+      "n": 5760,
+      "interior_answerable": 0,
+      "interior_pct": 0.0,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 1441,
+      "top_key_share": 0.5,
+      "chance": "Kendall tau = 0",
+      "rank_distance_hist": {},
+      "by_N": {
+        "7": 1440,
+        "9": 1440,
+        "12": 1440,
+        "16": 1440
+      }
+    },
+    "successor": {
+      "n": 14400,
+      "interior_answerable": 7920,
+      "interior_pct": 55.0,
+      "endpoint_diagnostic": 0,
+      "distinct_keys": 472,
+      "top_key_share": 0.004,
+      "chance": "~1/N",
+      "rank_distance_hist": {
+        "1": 14400
+      },
+      "by_N": {
+        "7": 3600,
+        "9": 3600,
+        "12": 3600,
+        "16": 3600
+      }
+    }
+  },
+  "coverage_family_by_N_interior": {
+    "pairwise": {
+      "7": 4320,
+      "9": 7200,
+      "12": 8640,
+      "16": 11520
+    },
+    "rank": {
+      "7": 1882,
+      "9": 3218,
+      "12": 4801,
+      "16": 5353
+    },
+    "betweenness": {
+      "7": 720,
+      "9": 2160,
+      "12": 2160,
+      "16": 2160
+    },
+    "successor": {
+      "7": 1440,
+      "9": 2160,
+      "12": 2160,
+      "16": 2160
+    },
+    "predecessor": {
+      "7": 1440,
+      "9": 2160,
+      "12": 2160,
+      "16": 2160
+    },
+    "count_between": {
+      "7": 2160,
+      "9": 2160,
+      "12": 2160,
+      "16": 2160
+    },
+    "comparative_distance": {
+      "7": 1440,
+      "9": 2160,
+      "12": 2160,
+      "16": 2160
+    }
+  },
+  "structure_by_family": {
+    "total_order": {
+      "betweenness": 17280,
+      "comparative_distance": 17280,
+      "count_between": 17280,
+      "extremes": 5760,
+      "pairwise": 82080,
+      "predecessor": 14400,
+      "rank": 24480,
+      "reconstruction": 5760,
+      "successor": 14400
+    },
+    "partial_order": {
+      "order_query": 34560
+    },
+    "grid2d": {
+      "pairwise": 34560
+    }
+  },
+  "family_by_difficulty_interior": {
+    "pairwise": {
+      "easy": 15840,
+      "hard": 15840
+    },
+    "rank": {
+      "easy": 7568,
+      "hard": 7686
+    },
+    "betweenness": {
+      "easy": 3600,
+      "hard": 3600
+    },
+    "successor": {
+      "easy": 3960,
+      "hard": 3960
+    },
+    "predecessor": {
+      "easy": 3960,
+      "hard": 3960
+    },
+    "count_between": {
+      "easy": 4320,
+      "hard": 4320
+    },
+    "comparative_distance": {
+      "easy": 3960,
+      "hard": 3960
+    }
+  },
+  "degeneracy_flags": []
+}
