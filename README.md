@@ -3,6 +3,8 @@
 **Do language models build a persistent, entity-indexed geometric representation — a manifold — of a novel relational structure given purely in their context window, and if so, at which layers?**
 
 > Status: 🚧 instrument built and audited; the decisive activation run awaits GPU. No headline results yet.
+>
+> **Full research plan:** [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md) — the wide sweep (architecture × query × probe × layer), the decision tree, and the 2D/3D manifold visualization deliverables.
 
 ---
 
@@ -70,7 +72,9 @@ Confound controls are **first-class metrics**, not afterthoughts:
 │   ├── probe_rank.py          # all-ranks layer sweep (all-vs-interior comparison)
 │   ├── audit_confounds.py / adv_confound_audit.py / adv_decode.py  # data-level confound audits
 │   ├── deploy_knockout.py / steer_rank.py   # deployment / causal tests
+│   ├── visualize_manifold.py  # (planned) 2D/3D projections colored by rank + null controls
 │   └── smoke_v100.py          # per-model fp16 admission test (V100)
+├── docs/RESEARCH_PLAN.md      # the wide sweep, decision tree, visualization deliverables
 └── tests/test_bcs.py          # 32 generation invariants (all six confound gates, per config)
 ```
 
@@ -94,6 +98,8 @@ python scripts/probe_interior.py --acts <acts> --scheme readout --family s1_size
 ## The decisive measurement
 
 Interior-only rank decodability at the readout locus, per layer, in a *solvable* cell, against the permutation and coherence nulls — for a **dense** model and an **SSM** model side by side. One comparison decides **manifold vs query-local computation**, answers **at which layers**, and tests the architecture lever at once; everything else in the sweep refines it. The protocol is *extract wide, probe exhaustively offline, then select from the results*. Any claim must replicate on ≥3 models spanning ≥2 architecture classes.
+
+**The picture.** The headline output is a **2D/3D visualization of the manifold** — the interior entities at the readout locus, projected (PCA + a nonlinear embedding) and colored by latent rank: a curved 1-D arc for a total order, a 2-D sheet for a grid, two components for a partial order, shown per layer (forming and dissolving with depth) and per architecture. Every manifold picture ships next to its coherence-null control panel (which should be a blob, not an arc); the projection illustrates, the interior-only decode decides. See [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md).
 
 ## License
 MIT

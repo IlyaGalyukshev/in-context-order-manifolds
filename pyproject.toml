@@ -30,7 +30,10 @@ gpu = [
     "accelerate>=0.30",
     "datasets>=2.19",
 ]
-viz = ["matplotlib>=3.8", "seaborn>=0.13"]  # depth-profile / dimensionality figures
+# depth-profile / dimensionality figures + 2D/3D manifold projections.
+# Isomap/spectral/LLE come from sklearn.manifold (already a base dep); plotly
+# gives interactive rotatable 3D, umap-learn an optional nonlinear embedding.
+viz = ["matplotlib>=3.8", "seaborn>=0.13", "plotly>=5.20", "umap-learn>=0.5"]
 dev = ["pytest>=8", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]
