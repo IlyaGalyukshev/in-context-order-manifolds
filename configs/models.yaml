@@ -1,55 +1,95 @@
 # Model roster — modern open-weight, V100-compatible (updated 2026-07).
 #
+# The architecture axis is FIRST-CLASS, not incidental. The core fork is
+# "persistent entity-indexed manifold vs query-local computation", and the
+# architecture changes what query-local even means:
+#   - full-attention dense: at the question the model can RE-ATTEND to every
+#     card -> query-local order computation is cheap; a manifold is optional.
+#   - linear-attention / SSM (Mamba, RWKV): the cards are gone from the state at
+#     query time (bounded recurrent state, no per-token KV to re-read) -> order
+#     MUST be compressed into a persistent state as the cards stream in. If the
+#     manifold/query-local distinction is real, these are forced onto the
+#     manifold side (or fail at large N when the state bottlenecks). This is the
+#     sharpest architectural prediction the benchmark makes.
+#   - MoE: is the order code carried in the routing-invariant residual stream,
+#     or fragmented across experts (does decodability depend on which expert
+#     fired at the readout token)?
+#
+# The cleanest contrasts to run first:
+#   (1) same-lab dense vs hybrid: olmo3-7b   vs olmo-hybrid-7b  (data/training
+#       matched -> architecture isolated)
+#   (2) full-attention vs pure-SSM: qwen3-8b vs falcon-mamba-7b (extreme)
+#   (3) dense vs MoE at comparable active params: qwen3-4b vs olmoe-1b-7b (1B
+#       active) / qwen3-30b-a3b (3B active)
+#
 # V100 fleet (SM 7.0) hard constraints:
 #   - fp16 only (no bf16 in hardware); every model gets a day-1 fp16-vs-fp32
-#     logit-KL smoke test before entering the grid
-#   - eager/SDPA attention (no FlashAttention)
-#   - torch < 2.7 / cu126 wheels at newest (PyTorch drops Volta from cu128+ builds)
-#   - modern vLLM dropped Volta entirely → the battery runs through the in-repo
-#     HF prefix-cache runner (src/icom/battery), no inference server needed.
+#     logit-KL smoke test (scripts/smoke_v100.py) before entering the grid.
+#   - eager/SDPA attention (no FlashAttention).
+#   - torch < 2.7 / cu126 wheels at newest (PyTorch drops Volta from cu128+).
+#   - modern vLLM dropped Volta -> the battery runs through the in-repo HF
+#     prefix-cache runner (src/icom/battery), no inference server needed.
+#   - SSM/linear-attention EXTRA GATE: mamba_ssm / causal-conv1d / FLA Triton
+#     kernels may not build on SM 7.0. Extraction only needs forward passes with
+#     output_hidden_states, so the HF slow/eager fallback path is acceptable
+#     (slower, correct). smoke_v100.py must confirm the forward runs AND exposes
+#     per-layer hidden states before any SSM model enters the grid.
 defaults: &v100
   dtype: float16
   attn_implementation: eager
   device_map: auto
 
+# ---------------------------------------------------------------- PRIMARY GRID
 models:
+  # --- Dense, full softmax attention (GQA+RoPE) ------------------------------
   # Flagship interpretability model: fully open (data + code + every training
-  # stage), standard transformer, ungated, Apache 2.0. Checkpoint revisions
-  # (e.g. stage1-step10000) give Track E developmental analyses for free,
-  # and the open pretraining data lets us verify nonce-entity novelty.
-  olmo3-7b:      { hf_id: allenai/Olmo-3-1025-7B,     <<: *v100, checkpoints: true, role: base }
-  olmo3-7b-inst: { hf_id: allenai/Olmo-3-7B-Instruct, <<: *v100, role: instruct }
+  # stage), ungated, Apache 2.0. Checkpoint revisions give developmental
+  # analyses for free; open pretraining data verifies nonce-entity novelty.
+  olmo3-7b:      { hf_id: allenai/Olmo-3-1025-7B,     <<: *v100, arch: dense, checkpoints: true, role: base }
+  olmo3-7b-inst: { hf_id: allenai/Olmo-3-7B-Instruct, <<: *v100, arch: dense, role: instruct }
+  # Scale axis: Qwen3 dense, Apache 2.0, ungated. Battery: enable_thinking=false.
+  qwen3-1.7b: { hf_id: Qwen/Qwen3-1.7B, <<: *v100, arch: dense, role: instruct }
+  qwen3-4b:   { hf_id: Qwen/Qwen3-4B,   <<: *v100, arch: dense, role: instruct }
+  qwen3-8b:   { hf_id: Qwen/Qwen3-8B,   <<: *v100, arch: dense, role: instruct }
+  qwen3-14b:  { hf_id: Qwen/Qwen3-14B,  <<: *v100, arch: dense, role: instruct, note: "1 GPU at short ctx; else 2" }
+  # Small fully-open point; NoPE-interleaved layers (every 4th has no positional
+  # encoding) -> a built-in contrast for the position-confound analyses.
+  smollm3-3b: { hf_id: HuggingFaceTB/SmolLM3-3B, <<: *v100, arch: dense, optional: true }
 
-  # Scale axis: Qwen3 dense (standard GQA+RoPE softmax attention — the hybrid
-  # designs only start with Qwen3-Next/3.5), Apache 2.0, ungated.
-  # Battery runs with enable_thinking=false in the chat template.
-  qwen3-1.7b: { hf_id: Qwen/Qwen3-1.7B, <<: *v100, role: instruct }
-  qwen3-4b:   { hf_id: Qwen/Qwen3-4B,   <<: *v100, role: instruct }
-  qwen3-8b:   { hf_id: Qwen/Qwen3-8B,   <<: *v100, role: instruct }
-  qwen3-14b:  { hf_id: Qwen/Qwen3-14B,  <<: *v100, role: instruct, note: "1 GPU at short ctx; else 2" }
+  # --- MoE (sparse routing) -------------------------------------------------
+  # Fully open MoE, 7B total / ~1B active, incl. checkpoints -> the open MoE
+  # point; 1 card fp16. Lets us ask whether the order code is routing-invariant.
+  olmoe-1b-7b: { hf_id: allenai/OLMoE-1B-7B-0125-Instruct, <<: *v100, arch: moe, checkpoints: true, note: "capture router logits at readout for expert-conditioned decodability" }
+  # Modern strong MoE, 30B total / 3B active -> ~60GB fp16 across 2-3 cards.
+  qwen3-30b-a3b: { hf_id: Qwen/Qwen3-30B-A3B, dtype: float16, attn_implementation: eager, arch: moe, gpus: 3, role: instruct, note: "enable_thinking=false; device_map across 2-3 V100" }
 
-  # Small fully-open point; NoPE-interleaved layers (every 4th layer has no
-  # positional encoding) — an interesting contrast for the position-confound
-  # analyses. Optional.
-  smollm3-3b: { hf_id: HuggingFaceTB/SmolLM3-3B, <<: *v100, optional: true }
+  # --- Linear-attention / SSM / hybrid (bounded recurrent state) -------------
+  # Same lab & data as olmo3-7b -> the cleanest dense-vs-hybrid contrast (only
+  # the attention mechanism changes). Highest-priority architecture comparison.
+  olmo-hybrid-7b: { hf_id: allenai/Olmo-Hybrid-7B, dtype: float16, attn_implementation: eager, arch: hybrid, note: "Gated-DeltaNet/FLA kernels: run smoke_v100 first; extraction-only slow-path ok" }
+  # Pure Mamba (no attention at all) -> the extreme "cards gone at query time"
+  # point; 7B, ~14GB, 1 card. Tests the forced-manifold prediction hardest.
+  falcon-mamba-7b: { hf_id: tiiuae/falcon-mamba-7b, dtype: float16, arch: ssm, note: "mamba_ssm kernels may not build on SM70; HF slow fallback for extraction; smoke first" }
 
-# Scale-up confirmation. 32B fp16 = ~64GB weights → extraction feasible across
-# 3× V100-32GB with device_map (replaces the old "quantized 70B" idea: fully
-# open, ungated, and activations are accessible, not just behavior).
+# --------------------------------------------------------------- CONFIRMATORY
+# Scale-up confirmation. 32B fp16 = ~64GB weights -> extraction across 3x V100
+# with device_map (fully open, ungated; activations accessible, not just logits).
 confirmatory:
-  olmo3-32b: { hf_id: allenai/Olmo-3-1125-32B, dtype: float16, gpus: 3, checkpoints: true }
+  olmo3-32b: { hf_id: allenai/Olmo-3-1125-32B, dtype: float16, gpus: 3, arch: dense, checkpoints: true }
 
-# Architecture contrast (exploratory): hybrid linear-attention models. Verify
-# Gated-DeltaNet/FLA kernels actually run on SM 7.0 (likely eager-fallback,
-# extraction-only) before committing any track to these.
+# --------------------------------------------------------------- EXPLORATORY
+# Extra architecture points; add once the primary trio validates the pipeline.
+# Verify hf_id + V100/kernel compat (smoke_v100) before committing a track.
 exploratory:
-  olmo-hybrid-7b: { hf_id: allenai/Olmo-Hybrid-7B, dtype: float16, note: "matched hybrid sibling of olmo3-7b — same lab/data" }
-  qwen3.5-9b:     { hf_id: Qwen/Qwen3.5-9B,        dtype: float16, note: "hybrid GDN family; hf_id to re-verify" }
+  zamba2-7b:      { hf_id: Zyphra/Zamba2-7B,        dtype: float16, arch: hybrid, note: "Mamba2 + shared-attention; needs mamba_ssm; verify SM70" }
+  deepseek-v2-lite: { hf_id: deepseek-ai/DeepSeek-V2-Lite, dtype: float16, arch: moe, note: "16B/2.4B active, MLA attention, trust_remote_code; V100 compat uncertain" }
+  rwkv7-goose:    { hf_id: fla-hub/rwkv7-1.5B-world, dtype: float16, arch: linear_rnn, note: "RWKV-7 linear-attention RNN; hf_id + FLA kernels to verify" }
+  qwen3.5-9b:     { hf_id: Qwen/Qwen3.5-9B,          dtype: float16, arch: hybrid, note: "Gated-DeltaNet family; hf_id to re-verify" }
 
 # Excluded, with reasons:
-#   gemma-3   — bf16-trained with fp16-overflow history; V100 has no bf16; gated license
-#   llama-3/4 — gated (needs HF token); 4.x is MoE and oversized for extraction
+#   gemma-3   — bf16-trained with fp16-overflow history; V100 has no bf16; gated
+#   llama-3/4 — gated (needs HF token); 4.x MoE oversized for extraction
 #   phi-4     — standard+MIT but adds nothing over qwen3-14b on this grid
-#   pythia / qwen2.5 / llama-3.x — superseded: olmo3 covers checkpoints, qwen3 covers scale
-#   (qwen2.5-3b/7b/14b remain fully cached on the NFS workspace — free legacy
-#    fallback if a sanity baseline is ever needed)
+#   jamba / phi-3.5-moe — >40B, too big for the extraction budget on V100
+#   pythia / qwen2.5 / llama-3.x — superseded (olmo3 = checkpoints, qwen3 = scale)
+#   (qwen2.5-3b/7b/14b remain cached on NFS — free legacy sanity fallback)

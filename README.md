@@ -35,10 +35,13 @@ Confound controls are **first-class metrics**, not afterthoughts:
 
 ## What it can measure
 
+- **Architecture** — the same task across **dense full-attention** (Qwen3, OLMo-3), **MoE** (OLMoE, Qwen3-30B-A3B), and **linear-attention / SSM** (Falcon-Mamba, OLMo-Hybrid) models. This is a mechanistic lever, not just "more models": with full attention the model can re-read every card at the question, so order can be computed query-locally; a pure SSM has only a bounded recurrent state at query time, so it *must* compress the order into a persistent representation as the cards stream in. If the manifold-vs-query-local distinction is real, the architectures should dissociate.
 - **Semantics gradient** — the same abstract task under a symbolic relation ("zibs", transitivity declared in-context) vs meaningful comparatives ("smaller/louder") → does order representation need meaning?
 - **Difficulty ladder** — easy (short-range padding, locally chainable) vs hard (long-range padding, forces global integration), on **content-matched** stimuli → guarantees a solvable regime and separates competence from geometry.
 - **Non-total structures** — partial orders (two incomparable chains; tests whether the model invents a spurious total order) and 2-D structures (two independent orders; tests whether intrinsic dimension mirrors the structure).
-- **Behavior ⟂ geometry** — a behavioral battery (reconstruction, distance-stratified pairwise, rank, order-query with an incomparability option) run at the same stimuli, so geometry is only interpreted where behavior is above chance.
+- **Query categories** — a behavioral battery spanning the order relation (pairwise, rank-distance stratified), the coordinate (rank), the metric (count-between, comparative-distance), local structure (successor), and incomparability (order-query) — chosen so behavior can be checked against the same metric a manifold would encode.
+- **Probes at every layer and locus** — the stored activations are swept exhaustively offline (pure CPU): interior-only linear rank decoding (primary), per-rank profile, nonlinear/curvature, representational-geometry (RSA vs |rank difference|), intrinsic dimension, and cross-condition / cross-N / cross-family / cross-architecture transfer — across all layers and read loci (roster, name, per-card, query-token).
+- **Behavior ⟂ geometry** — the battery is run at the same stimuli, so geometry is only interpreted where behavior is above chance.
 
 ## Repository layout
 
@@ -90,7 +93,7 @@ python scripts/probe_interior.py --acts <acts> --scheme readout --family s1_size
 
 ## The decisive measurement
 
-Interior-only rank decodability at the readout locus, per layer, in a *solvable* cell, against the permutation and coherence nulls. One curve decides **manifold vs query-local computation** and answers **at which layers** — everything else refines it. Any claim must replicate on ≥3 models.
+Interior-only rank decodability at the readout locus, per layer, in a *solvable* cell, against the permutation and coherence nulls — for a **dense** model and an **SSM** model side by side. One comparison decides **manifold vs query-local computation**, answers **at which layers**, and tests the architecture lever at once; everything else in the sweep refines it. The protocol is *extract wide, probe exhaustively offline, then select from the results*. Any claim must replicate on ≥3 models spanning ≥2 architecture classes.
 
 ## License
 MIT
