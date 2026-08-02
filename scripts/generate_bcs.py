@@ -14,8 +14,9 @@ from pathlib import Path
 
 import numpy as np
 
-from icom.generator.bcs import build_stimulus, build_partial_order, build_grid2d
-from icom.generator.bcs_questions import make_battery, make_partial_battery, make_grid_battery
+from icom.generator.bcs import build_stimulus, build_partial_order, build_grid2d, build_cyclic
+from icom.generator.bcs_questions import (make_battery, make_partial_battery,
+                                          make_grid_battery, make_cyclic_battery)
 
 SEED = 20260724
 
@@ -104,6 +105,24 @@ def main():
                             if cond == conds[0]:
                                 for q in make_grid_battery(st):
                                     fq.write(json.dumps(q) + "\n"); n_q += 1
+                        # cyclic ring (nonlinear litmus) — once per (idx,N,family), no
+                        # easy/hard split (a ring is position-symmetric).
+                        if diff == diffs[0]:
+                            for fam in fams:
+                                for cond in conds:
+                                    st = build_cyclic(fam, N, SEED, idx, vocab,
+                                                      d=args.degree, condition=cond)
+                                    st["difficulty"] = "cyclic"
+                                    g = st["gate"]
+                                    cyc_ok = (g["degree_regular"] and g["unique_cycle"]
+                                              and abs(g["corr_pos_subjfrac"]) < 1e-9
+                                              and (cond != "shuffle" or g["corr_pos_slot_circular"] <= 0.25))
+                                    if not cyc_ok:
+                                        gate_fail += 1
+                                    fs.write(json.dumps(st) + "\n"); n_struct += 1
+                                    if cond == conds[0]:
+                                        for q in make_cyclic_battery(st):
+                                            fq.write(json.dumps(q) + "\n"); n_q += 1
 
     meta = {"families": fams, "n_grid": ngrid, "per_cell": args.per_cell, "degree": args.degree,
             "conditions": conds, "difficulty": args.difficulty, "n_stimuli": n_stim + n_struct,

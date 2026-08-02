@@ -228,6 +228,49 @@ def test_metric_families_present_and_interior_flagged():
                for q in qs if q["family"] == "extremes")
 
 
+def test_cyclic_gates_and_no_endpoints():
+    """The cyclic ring is degree-regular, has non-adjacent edges, forms exactly
+    ONE valid cycle (distinct from the invalid-cycle null), is position-symmetric
+    (no endpoints: every entity is named-first in ~half its cards), and each
+    entity is mentioned exactly d times (frequency ⟂ position)."""
+    from icom.generator.bcs import build_cyclic
+    for N in (9, 12, 16):
+        s = build_cyclic("s1_size", N, SEED, N, VOCAB, d=4, condition="shuffle")
+        g = s["gate"]
+        assert g["degree_regular"] and g["has_nonadjacent"] and g["unique_cycle"]
+        assert abs(g["corr_pos_subjfrac"]) < 1e-9          # first-named ⟂ position (Eulerian)
+        assert g["corr_pos_slot_circular"] <= 0.25         # slot ⟂ circular position (shuffle)
+        # mention count == degree for all -> frequency is position-invariant
+        cnt = Counter()
+        for c in s["cards"]:
+            cnt[c["entity"]] += 1; cnt[c["entity_b"]] += 1
+        assert set(cnt.values()) == {4}, cnt
+        # every entity plays BOTH roles somewhere (no subject-only endpoint)
+        firsts = {c["entity"] for c in s["cards"]}
+        seconds = {c["entity_b"] for c in s["cards"]}
+        assert firsts == seconds == set(s["latent_order"])
+
+
+def test_cyclic_battery_keys_correct():
+    """Cyclic successor/predecessor/distance/order keys recompute from cyclic_pos."""
+    from icom.generator.bcs import build_cyclic
+    from icom.generator.bcs_questions import make_cyclic_battery
+    for N in (9, 12, 16):
+        s = build_cyclic("s0_zib", N, SEED, N + 1, VOCAB, d=4, condition="shuffle")
+        pos = s["cyclic_pos"]; at = {p: e for e, p in pos.items()}
+        for q in make_cyclic_battery(s):
+            f, k, te = q["family"], q["answer_key"], q["target_entities"]
+            if f == "cyclic_successor":
+                assert k == at[(pos[te[0]] + 1) % N]
+            elif f == "cyclic_predecessor":
+                assert k == at[(pos[te[0]] - 1) % N]
+            elif f == "cyclic_distance":
+                a, b = te; assert k == str((pos[b] - pos[a]) % N)
+            elif f == "cyclic_order":
+                x, a, b = te
+                assert k == (a if (pos[a] - pos[x]) % N < (pos[b] - pos[x]) % N else b)
+
+
 def test_metric_families_not_degenerate():
     """Keys/positions aren't constant: comparative answer uses both slots,
     betweenness middle appears in every shown position, count_between spans

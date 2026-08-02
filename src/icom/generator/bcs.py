@@ -552,3 +552,142 @@ def _inject_cycle(edge_list, rng):
         if _has_cycle(directed, n):
             return directed
     return directed  # fallback (extremely unlikely to reach without a cycle)
+
+
+# ------------------------------------------------------------------ cyclic ring
+CYCLIC_PREAMBLE = (
+    "In this puzzle the entities are arranged clockwise around a circle and the "
+    "positions wrap around, so every entity has both a clockwise-next and a "
+    "clockwise-previous entity. 'The A is k place(s) before the B' means the B is "
+    "k steps clockwise from the A; equivalently, 'The B is k place(s) after the A' "
+    "means the same thing.")
+
+
+def build_cyclic(family: str, n_items: int, seed: int, idx: int, vocab,
+                 d: int = 4, condition: str = "shuffle", difficulty: str = None,
+                 readout: bool = True):
+    """A VALID cyclic order over nonce entities (a ring) — the nonlinear litmus,
+    distinct from the invalid-cycle coherence null.
+
+    Directed circulant: edges i -> (i+k) mod N for k in 1..d/2 place the entities
+    on a ring. The k=1 edges form a single directed Hamiltonian cycle, pinning the
+    cyclic order UNIQUELY up to rotation; k>=2 add redundancy and non-adjacency.
+    By cyclic symmetry there are NO endpoints, and mention frequency (degree) and
+    first-named fraction are position-invariant, so the design is confound-clean
+    for cyclic position by construction. Tests whether the model builds a CIRCULAR
+    (nonlinear) manifold. `family` selects only the entity nouns; the relation is
+    the neutral clockwise framing (S0/S1 share it here).
+    """
+    rng = rng_for(seed, "bcs_cyc", family, n_items, idx, d, difficulty)
+    N = n_items
+    entities = [vocab[i] for i in rng.choice(len(vocab), size=N, replace=False)]
+    pos = {e: i for i, e in enumerate(entities)}          # cyclic position 0..N-1
+    steps = list(range(1, max(d // 2, 1) + 1))            # {1,2} for d=4: ring + skip
+    assert max(steps) < N / 2, f"diametric hop (max {max(steps)} >= N/2={N/2}) duplicates edges"
+
+    # directed edges (before -> after by k); NAMING is Eulerian-balanced so each
+    # entity is first-named in exactly d/2 cards (first-named ⟂ position, exactly).
+    directed = [(i, (i + k) % N, k) for i in range(N) for k in steps]
+    undirected = [(min(t, h), max(t, h)) for (t, h, _) in directed]
+    tail = eulerian_orientation(undirected, N)
+    cards = []
+    for eidx, (t, h, k) in enumerate(directed):
+        a, b = entities[t], entities[h]                   # b is k clockwise after a
+        plural = "s" if k > 1 else ""
+        if tail[eidx] == t:                               # name the "before" entity first
+            text = f"The {a} is {k} place{plural} before the {b}."
+            first, second = a, b
+        else:                                             # name the "after" entity first
+            text = f"The {b} is {k} place{plural} after the {a}."
+            first, second = b, a
+        cards.append({"tail": t, "head": h, "k": k, "text": text,
+                      "entity": first, "entity_b": second})
+
+    # presentation order: decorrelate mean card position from the CIRCULAR
+    # position (cos/sin of the angle), not a linear index, under shuffle.
+    ang = 2 * np.pi * np.arange(N) / N
+    cosv, sinv = np.cos(ang), np.sin(ang)
+    ent_idx = {e: i for i, e in enumerate(entities)}
+    touch = [(ent_idx[c["entity"]], ent_idx[c["entity_b"]]) for c in cards]
+
+    def _meanslot(perm):
+        ps = np.zeros(N); pc = np.zeros(N)
+        for si, ci in enumerate(perm):
+            a, b = touch[ci]; ps[a] += si; ps[b] += si; pc[a] += 1; pc[b] += 1
+        return ps / np.maximum(pc, 1)
+
+    def _circ_leak(mp):                                    # |corr| of slot with (cos,sin)
+        if np.std(mp) == 0:
+            return 0.0
+        return float(max(abs(np.corrcoef(mp, cosv)[0, 1]), abs(np.corrcoef(mp, sinv)[0, 1])))
+
+    if condition == "forward":
+        order = sorted(range(len(cards)), key=lambda j: (cards[j]["tail"], cards[j]["k"]))
+    else:
+        order, best = list(range(len(cards))), np.inf
+        for _ in range(4000):
+            perm = rng.permutation(len(cards))
+            leak = _circ_leak(_meanslot(perm))
+            if leak < best:
+                best, order = leak, perm
+            if leak <= 0.12:
+                break
+    meanpos = _meanslot(order)
+    cards = [cards[j] for j in order]
+    for slot, c in enumerate(cards, 1):
+        c["presentation_slot"] = slot
+        c["latent_rank"] = c["tail"] + 1
+
+    deg = {i: 0 for i in range(N)}
+    for c in cards:
+        deg[c["tail"]] += 1; deg[c["head"]] += 1
+    subj = _subject_slot_fraction(cards, entities)
+    report = {
+        "structure": "cyclic",
+        "degree_regular": all(v == d for v in deg.values()),
+        "degrees": [deg[i] for i in range(N)],
+        "has_nonadjacent": max(steps) >= 2,
+        # verified from the ACTUAL k=1 successor edges (not a hardcoded cycle)
+        "unique_cycle": _is_single_cycle([(t, h) for (t, h, k) in directed if k == 1], N),
+        "corr_pos_subjfrac": float(np.corrcoef(np.arange(N), subj)[0, 1]) if np.std(subj) > 0 else 0.0,
+        "corr_pos_slot_circular": _circ_leak(meanpos),
+    }
+
+    prompt = CYCLIC_PREAMBLE + "\n\n" + "\n".join(c["text"] for c in cards)
+    readout_order = None
+    if readout:
+        line, readout_order = roster_line(entities, rng)   # symmetric ⇒ no rank decorrelation
+        prompt += "\n\n" + line
+
+    key = hashlib.sha256(json.dumps(
+        ["cyc", family, N, seed, idx, d, entities], sort_keys=True).encode()).hexdigest()[:16]
+    stim = {
+        "family": family, "structure": "cyclic", "condition": condition,
+        "n_items": N, "seed": seed, "relation": family, "degree": d,
+        "latent_order": list(entities),                    # listed in cyclic-position order
+        "cyclic_pos": {e: int(pos[e]) for e in entities},
+        "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
+                   "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]}
+                  for c in cards],
+        "prompt": prompt, "content_key": key, "readout_order": readout_order, "gate": report,
+    }
+    stim["stimulus_id"] = hashlib.sha256((key + condition).encode()).hexdigest()[:16]
+    return stim
+
+
+def _is_single_cycle(directed_edges, n):
+    """True iff the directed edges form exactly ONE Hamiltonian cycle over n nodes
+    (each node out-degree 1, following successors visits all n and returns)."""
+    succ = {}
+    for a, b in directed_edges:
+        if a in succ:
+            return False
+        succ[a] = b
+    if len(succ) != n:
+        return False
+    seen = set(); u = 0
+    for _ in range(n):
+        if u in seen:
+            return False
+        seen.add(u); u = succ[u]
+    return u == 0 and len(seen) == n

@@ -35,10 +35,15 @@ CHANCE = {
     "count_between": "const-0 ~26%; report by rank_distance / MAE, not 1/(N-1)",
     "comparative_distance": "0.50 (2-choice)",
     "extremes": "~1/N (endpoint-diagnostic)",
+    "cyclic_successor": "~1/N",
+    "cyclic_predecessor": "~1/N",
+    "cyclic_distance": "~1/N (integer 0..N-1)",
+    "cyclic_order": "0.50 (2-choice)",
+    "order_query": "0.50 (2-choice + 'undetermined')",
 }
 # families whose keys are meant to concentrate (numbers / lists) -> skip the
 # top-key degeneracy flag for them.
-NUMERIC_OR_LIST = {"count_between", "rank", "reconstruction"}
+NUMERIC_OR_LIST = {"count_between", "rank", "reconstruction", "cyclic_distance"}
 
 
 def load_jsonl(p: Path):

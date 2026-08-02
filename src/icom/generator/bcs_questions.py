@@ -252,3 +252,47 @@ def make_grid_battery(stim: dict, *, per_axis: int = 12):
                 add(f"By the relations above, which is {rel.cmp_low}: the {first} or "
                     f"the {second}?", lower, axis, target_entities=(first, second))
     return qs
+
+
+def make_cyclic_battery(stim: dict, *, per_kind: int = 8):
+    """Cyclic-ring battery: successor / predecessor / clockwise-distance / order-of-3.
+    Keys are deterministic from the cyclic position (mod N). No endpoints exist
+    (every entity is position-symmetric), so all items are interior-equivalent."""
+    ents = stim["latent_order"]; ck = stim["content_key"]
+    pos = stim["cyclic_pos"]; N = len(ents)
+    at = {p: e for e, p in pos.items()}                    # position -> entity
+    rng = rng_for(stim["seed"], "bcs_cyc_q", stim["relation"], ck)
+    qs = []
+
+    def add(fam, text, key, fmt, **meta):
+        qs.append({"stimulus_content_key": ck, "qid": f"{ck}:{fam}:{len(qs)}",
+                   "family": fam, "text": text + FMT[fmt], "answer_key": key, **meta})
+
+    pick = lambda m: [ents[i] for i in rng.choice(N, size=min(m, N), replace=False)]
+    for e in pick(per_kind):
+        add("cyclic_successor",
+            f"Going clockwise around the circle, which entity comes immediately "
+            f"after the {e}?", at[(pos[e] + 1) % N], "name", target_entities=(e,))
+    for e in pick(per_kind):
+        add("cyclic_predecessor",
+            f"Going clockwise around the circle, which entity comes immediately "
+            f"before the {e}?", at[(pos[e] - 1) % N], "name", target_entities=(e,))
+    for _ in range(per_kind):
+        i, j = (int(x) for x in rng.choice(N, size=2, replace=False))
+        a, b = ents[i], ents[j]
+        add("cyclic_distance",
+            f"Going clockwise from the {a}, how many steps until you reach the "
+            f"{b}?", str((pos[b] - pos[a]) % N), "number", target_entities=(a, b))
+    for _ in range(per_kind):
+        i, j, k = (int(x) for x in rng.choice(N, size=3, replace=False))
+        x, y, z = ents[i], ents[j], ents[k]
+        dy, dz = (pos[y] - pos[x]) % N, (pos[z] - pos[x]) % N
+        if dy == dz:
+            continue
+        first = y if dy < dz else z
+        shown = [y, z]; rng.shuffle(shown)
+        add("cyclic_order",
+            f"Going clockwise from the {x}, which do you reach first: the "
+            f"{shown[0]} or the {shown[1]}?", first, "choice",
+            target_entities=(x, shown[0], shown[1]))
+    return qs
