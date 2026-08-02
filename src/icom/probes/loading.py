@@ -15,8 +15,10 @@ from pathlib import Path
 import numpy as np
 
 
-def load_records(acts, model, family, condition, scheme, N=None):
-    """List of {X:[N,L,D] float32, ranks:[N] int, N:int, content_key:str}."""
+def load_records(acts, model, family, condition, scheme, N=None, structure=None):
+    """List of {X:[N,L,D] float32, ranks:[N] int, N:int, content_key:str}.
+    `structure` (e.g. 'total_order', 'cyclic', 'grid2d', 'partial_order') filters
+    on meta.structure so cyclic and total-order cells are not mixed."""
     recs = []
     for f in sorted((Path(acts) / model).glob("*.npz")):
         z = np.load(f, allow_pickle=False)
@@ -24,6 +26,8 @@ def load_records(acts, model, family, condition, scheme, N=None):
         if m["family"] != family or m["condition"] != condition or scheme not in z.files:
             continue
         if N is not None and int(m["n_items"]) != int(N):
+            continue
+        if structure is not None and m.get("structure", "total_order") != structure:
             continue
         recs.append({"X": z[scheme].astype(np.float32), "ranks": z["ranks"].astype(int),
                      "N": int(m["n_items"]), "content_key": m["content_key"]})

@@ -230,3 +230,181 @@ def test_stack_layer_drops_nonfinite_rows(tmp_path):
     recs[0]["X"][2, SIG, 0] = np.inf                        # poison one entity at SIG
     X, y, g = stack_layer(recs, SIG, interior_only=False)
     assert np.isfinite(X).all()                            # poisoned row dropped, no crash
+
+
+# ---------------------------------------- shape characterization (G4 curvature)
+def _pooled(kind, N=14, G=12, noise=0.05, seed=0):
+    """Pooled (X, y, g) with a SHARED, FIXED embedding across G groups; ranks 1..N.
+    Basis is _basis(0) so tests can reference the same planted directions."""
+    rng = np.random.default_rng(seed)
+    u, v, _, _ = _basis(0)
+    Xs, ys, gs = [], [], []
+    for gi in range(G):
+        for r in range(1, N + 1):
+            t = (r - 1) / (N - 1)
+            if kind == "line":
+                s = t * u
+            elif kind == "arc":
+                th = np.pi * t; s = np.cos(th) * u + np.sin(th) * v
+            elif kind == "ring":
+                th = np.deg2rad(300) * t; s = np.cos(th) * u + np.sin(th) * v
+            Xs.append(noise * rng.standard_normal(D) + s); ys.append(t); gs.append(gi)
+    return np.array(Xs), np.array(ys), np.array(gs)
+
+
+def test_curvature_profile_and_principal_curve():
+    from icom.probes import curvature_profile, principal_curve_curvature
+    Xl, yl, gl = _pooled("line", seed=1)
+    Xr, yr, gr = _pooled("ring", seed=2)
+    Xa, ya, _ = _pooled("arc", seed=3)
+    assert curvature_profile(Xr, yr, gr)["curvature_gap"] > 0.1   # ring: nonlinear/geo beat linear
+    assert curvature_profile(Xl, yl, gl)["curvature_gap"] < 0.1   # line: no curvature gain
+    assert principal_curve_curvature(Xa, ya) > 0.3               # arc is curved
+    assert principal_curve_curvature(Xl, yl) < 0.15              # straight line ⇒ low curvature
+
+
+def test_curved_irreducible_and_separability():
+    from icom.probes import curved_irreducible, separability_index
+    Xa, ya, _ = _pooled("arc", seed=4)                      # open curved manifold
+    Xl, yl, _ = _pooled("line", seed=5)
+    assert curved_irreducible(Xa, ya)["curved"] is True     # arc: ≥2 lin dims + rank-curve
+    assert curved_irreducible(Xl, yl)["curved"] is False    # line: 1 lin dim (or no curve)
+    rng = np.random.default_rng(0)
+    th = rng.uniform(0, 2 * np.pi, 300)
+    circle = np.column_stack([np.cos(th), np.sin(th)])
+    blob = rng.random((300, 2))
+    assert separability_index(circle) > 0.3                 # circle: irreducible joint
+    assert separability_index(blob) < 0.2                   # uniform 2D: separable
+
+
+# ---------------------------------------- circular geometry (G8)
+def test_circle_fit_and_angular_decode():
+    from icom.probes import circle_fit, angular_decode
+    rng = np.random.default_rng(0)
+    N = 16
+    th = 2 * np.pi * np.arange(N) / N
+    circle = np.column_stack([np.cos(th), np.sin(th)]) + 0.02 * rng.standard_normal((N, 2))
+    line = np.column_stack([np.linspace(-1, 1, N), 0.02 * rng.standard_normal(N)])
+    assert circle_fit(circle)["rmse_norm"] < 0.1            # lies on a circle
+    assert circle_fit(line)["rmse_norm"] >= 0              # (a line fits a huge circle; use RSA to reject)
+    assert angular_decode(circle, np.arange(1, N + 1), N) > 0.9   # angle ↔ cyclic position
+
+
+def _cyclic_recs(N=12, nst=16, noise=0.03, seed=0):
+    rng = np.random.default_rng(seed)
+    u, v, _, _ = _basis(seed + 1)
+    out = []
+    for _ in range(nst):
+        X = np.zeros((N, LAYERS, D), np.float32)
+        for r in range(1, N + 1):
+            th = 2 * np.pi * (r - 1) / N
+            X[r - 1, SIG] = noise * rng.standard_normal(D) + np.cos(th) * u + np.sin(th) * v
+        out.append({"X": X, "ranks": np.arange(1, N + 1), "N": N})
+    return out
+
+
+def _line_recs(N=12, nst=16, noise=0.03, seed=1):
+    rng = np.random.default_rng(seed)
+    u, v, _, _ = _basis(seed + 1)
+    out = []
+    for _ in range(nst):
+        X = np.zeros((N, LAYERS, D), np.float32)
+        for r in range(1, N + 1):
+            X[r - 1, SIG] = noise * rng.standard_normal(D) + (r - 1) / (N - 1) * u
+        out.append({"X": X, "ranks": np.arange(1, N + 1), "N": N})
+    return out
+
+
+def test_circular_rsa_prefers_cyclic_distance():
+    from icom.probes import circular_rsa
+    ring = circular_rsa(_cyclic_recs(seed=6), SIG)
+    line = circular_rsa(_line_recs(seed=7), SIG)
+    assert ring["cyclic_rsa"] > 0.7 and ring["cyclic_rsa"] > ring["linear_rsa"]  # ring ⇒ cyclic ≫ linear
+    assert line["linear_rsa"] > line["cyclic_rsa"]                               # line ⇒ linear > cyclic
+
+
+# ---------------------------------------- axis alignment (G10)
+def test_alignment_directions():
+    from icom.probes import (contrast_direction, rank_direction, direction_cosine,
+                             subspace_alignment)
+    rng = np.random.default_rng(0)
+    u, v, _, _ = _basis(0)                                  # matches _pooled's basis
+    # planted rank axis along u; probe should recover it
+    X, y, g = _pooled("line", noise=0.03, seed=7)
+    rd = rank_direction(X, y)
+    assert direction_cosine(rd, u) > 0.8                    # recovers the planted axis
+    # source contrast along u (aligned) vs v (orthogonal)
+    pos = 1.0 * u + 0.05 * rng.standard_normal((40, D))
+    neg = -1.0 * u + 0.05 * rng.standard_normal((40, D))
+    src_aligned = contrast_direction(pos, neg)
+    assert direction_cosine(rd, src_aligned) > 0.8
+    assert direction_cosine(u, v) < 0.1                     # orthogonal basis
+    assert subspace_alignment(u[:, None], u[:, None]) > 0.99
+    assert subspace_alignment(u[:, None], v[:, None]) < 0.2
+
+
+def test_alignment_estimators_diverge_under_anisotropy():
+    """Ridge (whitened) and mean-diff (raw) estimators DISAGREE when a high-variance
+    nuisance is rank-correlated — so source-axis alignment must use the SAME operator
+    on both sides (rank_contrast_direction), not mix ridge with a contrast."""
+    from icom.probes import rank_direction, rank_contrast_direction, direction_cosine
+    rng = np.random.default_rng(0)
+    u, v, w, _ = _basis(0)
+    n = 200
+    t = rng.random(n)
+    nuis = 0.6 * (t - 0.5) + 0.8 * rng.standard_normal(n)   # rank-correlated, high-variance
+    X = 0.3 * np.outer(t, u) + 3.0 * np.outer(nuis, w) + 0.1 * rng.standard_normal((n, D))
+    rd = rank_direction(X, t)                               # ridge → clean low-var axis u
+    rc = rank_contrast_direction(X, t)                      # mean-diff → dominated by w
+    assert direction_cosine(rd, u) > 0.6
+    assert direction_cosine(rc, w) > 0.6
+    assert direction_cosine(rd, rc) < 0.5                   # ⇒ don't mix estimators
+
+
+def test_curved_irreducible_rejects_grid():
+    from icom.probes import curved_irreducible
+    rng = np.random.default_rng(9)
+    u, v, _, _ = _basis(0)
+    Xs, ys = [], []
+    for _ in range(12):                                    # rank along u, INDEPENDENT coord along v
+        for r in range(1, 15):
+            t = (r - 1) / 13
+            Xs.append(0.03 * rng.standard_normal(D) + t * u + rng.random() * v); ys.append(t)
+    assert curved_irreducible(np.array(Xs), np.array(ys))["curved"] is False   # 2-D blob, no rank-curve
+
+
+# ---------------------------------------- ring verdict + non-finite (review fixes)
+def _arc_recs(N=12, nst=16, noise=0.03, seed=2):
+    rng = np.random.default_rng(seed)
+    u, v, _, _ = _basis(seed + 1)
+    out = []
+    for _ in range(nst):
+        X = np.zeros((N, LAYERS, D), np.float32)
+        for r in range(1, N + 1):
+            th = np.pi * (r - 1) / (N - 1)
+            X[r - 1, SIG] = noise * rng.standard_normal(D) + np.cos(th) * u + np.sin(th) * v
+        out.append({"X": X, "ranks": np.arange(1, N + 1), "N": N})
+    return out
+
+
+def _ring_verdict(recs):
+    from icom.probes import circular_rsa, angular_decode, project
+    rsa = circular_rsa(recs, SIG)
+    X = np.concatenate([r["X"][:, SIG, :] for r in recs])
+    rk = np.concatenate([r["ranks"] for r in recs])
+    ang = angular_decode(project(X, "pca", 2), rk, int(rk.max()))
+    return rsa["cyclic_rsa"] - rsa["linear_rsa"] > 0.1 and ang > 0.8
+
+
+def test_ring_verdict_rejects_line_and_arc():
+    assert _ring_verdict(_cyclic_recs(seed=6)) is True      # a true ring
+    assert _ring_verdict(_line_recs(seed=7)) is False       # a line (circle_fit alone would miss this)
+    assert _ring_verdict(_arc_recs(seed=8)) is False        # an open arc
+
+
+def test_circular_rsa_handles_nonfinite():
+    from icom.probes import circular_rsa
+    recs = _cyclic_recs(seed=6)
+    recs[0]["X"][3, SIG, 0] = np.inf                        # poison one entity
+    r = circular_rsa(recs, SIG)
+    assert np.isfinite(r["cyclic_rsa"])                     # dropped, no crash
