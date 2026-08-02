@@ -11,6 +11,26 @@ probe catalog is then pure-CPU numpy over stored `[N × (L+1) × D]` fp16 tensor
 so every probe family × locus × layer × condition is run and the surviving
 signals are chosen afterward.
 
+## Positioning (see [`related_work.md`](related_work.md))
+Prior work separately shows (i) novel in-context structure reorganizes geometry
+(Park et al. 2501.00070; Kowalyshyn et al. 2605.08405), (ii) ordinal/magnitude
+quantities live on *nonlinear* manifolds — helix/circle/log/place-cell
+(Kantamneni & Tegmark 2502.00873; Engels et al. 2405.14860; Levy & Geva
+2410.11781; Gurnee et al. 2601.04480), and (iii) a pretrained magnitude/space axis
+exists and is steerable (Tehenan et al. 2506.02996; Heinzerling & Inui 2403.10381;
+Hu et al. 2602.06843). The two nearest neighbors: **Singh 2606.01269** (an emergent
+rank line + a reusable ordinal axis in a frozen LLM) and **Bassi & Tomar 2607.04167**
+(ordinal manifolds *degrade in the cross-position-integration regime*). This
+project targets the intersection none covers — a confound-clean, nonce-entity,
+**in-context-constructed** order, decoded **interior-only** against a permutation
+null, characterized for **nonlinearity**, localized in **depth** across **≥3
+architectures**, with a causal test of pretrained-axis reuse. Two implications:
+**nonlinear characterization is co-primary** (the manifold is likely curved), and
+BCS is the **adjudicator of exactly the integration regime** where ordinal-manifold
+coherence is reported to break down — a clean interior manifold there contradicts
+Bassi & Tomar (surprising positive); a collapse confirms and cleans them (strong
+negative). Either outcome is publishable.
+
 ## The central fork
 - **MANIFOLD** — a persistent, entity-indexed geometric code, present *after
   reading the cards*, whose coordinate mirrors the structure.
@@ -49,7 +69,7 @@ being the dense shortcut).
 |---|---|
 | Architecture | dense (Qwen3 1.7/4/8/14B, OLMo-3-7B, SmolLM3-3B) · MoE (OLMoE-1B-7B, Qwen3-30B-A3B) · SSM/linear/hybrid (Falcon-Mamba-7B, OLMo-Hybrid-7B; expl: Zamba2, RWKV-7, Qwen3.5) |
 | Semantics | S0 symbolic ("zibs") · S1 comparative (size / loud / heat) |
-| Structure | total order · partial order (2 chains) · 2-D grid |
+| Structure | total order · partial order (2 chains) · 2-D grid · **cyclic/modular ring** (nonlinear litmus — a valid single cycle, distinct from the invalid-cycle null) |
 | N | 7, 9, 12, 16 (+ 24 stress for the SSM state-bottleneck test) |
 | Difficulty | easy (near padding, locally chainable) · hard (far padding, forces global integration) — content-matched |
 | Condition | shuffle (identification) · forward (ceiling/control) · coherence-null (cycle → chance) |
@@ -57,6 +77,28 @@ being the dense shortcut).
 | Read locus | readout (roster, primary) · name · last_token · card_mean · marker · query-token (question appended — the query-local locus) |
 | Layer | all layers (full depth profile), reported as a fraction of depth |
 | Probe family | the 10 below |
+
+## New experiments from the 2026 literature
+- **Nonlinear characterization (co-primary).** Because ordinal/magnitude codes are
+  reported curved (helix/circle/log/place-cell), the manifold's *shape* is a
+  headline, not a footnote: principal-curve residual curvature, linear-vs-
+  nonlinear-vs-geodesic (Isomap) decode gap, the Engels *irreducibility/separability*
+  test (curvature is genuine, not a sum of linear parts), global PCA/RSA vs local
+  probe, and an explained-variance + continuity check (high R² ≠ smooth manifold).
+- **Cyclic/modular structure (litmus).** A new stimulus family: a valid single
+  cycle over nonce entities (modular successor / cyclic-betweenness), predicting a
+  *circular* manifold recoverable by circle-fit + circulant-RDM + nonlinear probe
+  where a linear probe fails. The sharpest test that an in-context order can be
+  nonlinear.
+- **Pretrained-axis reuse (flagship extension).** Does the novel in-context order
+  ride on a pretrained magnitude/size/space axis? Extract the source axis from a
+  *comparative* ("which is bigger") contrast (not digit identity — per-digit
+  landmine), align via cosine/CCA/cross-domain transfer, and *causally ablate* it
+  to see if BCS ordering breaks — with **S0 (arbitrary "zib" order, zero magnitude
+  lexicon)** as the clean abstract target no prior work has.
+- **Difficulty ladder as adjudication.** easy (locally chainable) vs hard (forces
+  integration) is now a direct test of Bassi & Tomar's local-vs-integration
+  boundary — the confound-clean arbiter of where ordinal-manifold coherence holds.
 
 ## Phased protocol
 
