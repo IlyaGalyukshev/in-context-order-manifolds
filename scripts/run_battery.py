@@ -42,6 +42,12 @@ def main() -> None:
     spec = roster[args.model]
 
     stimuli = [json.loads(l) for l in open(args.stimuli)]
+    # Process in a fixed RANDOM order (not file order) so a run that does not
+    # finish leaves an UNBIASED random sample across all families / N / difficulty
+    # / condition — never a prefix biased toward the first cells. Seeded => stable
+    # across idempotent resumes.
+    import random
+    random.Random(20260724).shuffle(stimuli)
     if args.limit:
         stimuli = stimuli[: args.limit]
     questions = defaultdict(list)

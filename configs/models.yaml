@@ -69,7 +69,10 @@ models:
   olmo-hybrid-7b: { hf_id: allenai/Olmo-Hybrid-7B, dtype: float16, attn_implementation: eager, arch: hybrid, note: "Gated-DeltaNet/FLA kernels: run smoke_v100 first; extraction-only slow-path ok" }
   # Pure Mamba (no attention at all) -> the extreme "cards gone at query time"
   # point; 7B, ~14GB, 1 card. Tests the forced-manifold prediction hardest.
-  falcon-mamba-7b: { hf_id: tiiuae/falcon-mamba-7b, dtype: float16, arch: ssm, note: "mamba_ssm kernels may not build on SM70; HF slow fallback for extraction; smoke first" }
+  # Base for geometry; the -inst sibling is what the behaviour gate needs (a base
+  # LM does not follow the answer format -> 100% parse-fail on the battery).
+  falcon-mamba-7b:     { hf_id: tiiuae/falcon-mamba-7b, dtype: float16, arch: ssm, role: base, note: "mamba_ssm kernels may not build on SM70; HF slow fallback for extraction; smoke first" }
+  falcon-mamba-7b-inst: { hf_id: tiiuae/falcon-mamba-7b-instruct, dtype: float16, arch: ssm, role: instruct, note: "instruct sibling for the behavior gate" }
 
 # --------------------------------------------------------------- CONFIRMATORY
 # Scale-up confirmation. 32B fp16 = ~64GB weights -> extraction across 3x V100

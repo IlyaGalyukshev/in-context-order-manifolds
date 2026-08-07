@@ -133,7 +133,13 @@ def score_row(question: dict, completion: str, vocab: list[str],
         local = [e for e in vocab if not (anchored and te and e == te[0])]
         ents = _extract_entities(text, local)
         if not ents:
-            r["parse_failed"] = True
+            # model that only echoed the named cue/anchor = a WRONG answer, not a
+            # parse failure; a genuinely entity-free completion is the real pf.
+            if anchored and te and _extract_entities(text, [te[0]]):
+                r["correct"] = False
+                r["score"] = 0.0
+            else:
+                r["parse_failed"] = True
             return r
         r["correct"] = ents[0] == key
         r["score"] = float(r["correct"])

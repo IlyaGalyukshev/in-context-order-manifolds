@@ -24,13 +24,15 @@ MAX_NEW_TOKENS = {
     "adjacency": 48,
     "rank": 96,     # models narrate ("The tag X is at position...") — let them finish
     "span": 80,
-    # metric families (v2.1) — short answers, a little room for narration
-    "betweenness": 48, "successor": 48, "predecessor": 48,
-    "comparative_distance": 48, "extremes": 48, "count_between": 32,
-    "order_query": 48,
+    # metric families (v2.1). Models narrate before the payload despite the
+    # "reply with only ..." instruction, so the counting families need enough
+    # room to REACH the number (32 truncated mid-reasoning -> 95% parse-fail).
+    "betweenness": 64, "successor": 64, "predecessor": 64,
+    "comparative_distance": 64, "extremes": 48, "count_between": 200,
+    "order_query": 64,
     # cyclic-ring families (v2.2)
-    "cyclic_successor": 48, "cyclic_predecessor": 48,
-    "cyclic_order": 48, "cyclic_distance": 32,
+    "cyclic_successor": 64, "cyclic_predecessor": 64,
+    "cyclic_order": 64, "cyclic_distance": 200,
 }
 _DEFAULT_MNT = 64   # any future/unknown family: generous default, never a KeyError
 

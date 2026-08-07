@@ -42,6 +42,10 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     stimuli = [json.loads(l) for l in open(args.stimuli)]
+    # Fixed RANDOM processing order so a partial run is an unbiased sample across
+    # all cells (seeded => stable across idempotent resumes).
+    import random
+    random.Random(20260724).shuffle(stimuli)
     if args.limit:
         stimuli = stimuli[: args.limit]
 
