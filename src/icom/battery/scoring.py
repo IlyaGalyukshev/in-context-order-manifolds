@@ -121,4 +121,41 @@ def score_row(question: dict, completion: str, vocab: list[str],
             r["score"] = r["tau"] if not np.isnan(r["tau"]) else 0.0
             r["correct"] = r["exact_match"]
 
+    # --- metric + cyclic families (v2.1/v2.2): entity-name or integer answers ---
+    elif fam in ("betweenness", "extremes", "successor", "predecessor",
+                 "comparative_distance", "cyclic_successor", "cyclic_predecessor",
+                 "cyclic_order"):
+        te = list(question.get("target_entities") or ())
+        # exclude the ANCHOR/PIVOT entity (te[0]) that the question names and the
+        # model echoes — it is never the answer for these families.
+        anchored = fam in ("successor", "predecessor", "comparative_distance",
+                           "cyclic_successor", "cyclic_predecessor", "cyclic_order")
+        local = [e for e in vocab if not (anchored and te and e == te[0])]
+        ents = _extract_entities(text, local)
+        if not ents:
+            r["parse_failed"] = True
+            return r
+        r["correct"] = ents[0] == key
+        r["score"] = float(r["correct"])
+
+    elif fam in ("count_between", "cyclic_distance"):  # integer answer
+        ints = re.findall(r"\b(\d{1,3})\b", text)      # LAST int (models narrate first)
+        if not ints:
+            r["parse_failed"] = True
+            return r
+        r["correct"] = int(ints[-1]) == int(key)
+        r["score"] = float(r["correct"])
+
+    elif fam == "order_query":  # a named candidate, else 'undetermined'
+        ents = _extract_entities(text, list(question.get("target_entities") or ()))
+        if ents:
+            pred = ents[0]
+        elif re.search(r"\bundetermined\b", text, re.I):
+            pred = "undetermined"
+        else:
+            r["parse_failed"] = True
+            return r
+        r["correct"] = pred == key
+        r["score"] = float(r["correct"])
+
     return r

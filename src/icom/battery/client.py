@@ -24,7 +24,15 @@ MAX_NEW_TOKENS = {
     "adjacency": 48,
     "rank": 96,     # models narrate ("The tag X is at position...") — let them finish
     "span": 80,
+    # metric families (v2.1) — short answers, a little room for narration
+    "betweenness": 48, "successor": 48, "predecessor": 48,
+    "comparative_distance": 48, "extremes": 48, "count_between": 32,
+    "order_query": 48,
+    # cyclic-ring families (v2.2)
+    "cyclic_successor": 48, "cyclic_predecessor": 48,
+    "cyclic_order": 48, "cyclic_distance": 32,
 }
+_DEFAULT_MNT = 64   # any future/unknown family: generous default, never a KeyError
 
 YES_VARIANTS = ("yes", " yes", "Yes", " Yes", "YES")
 NO_VARIANTS = ("no", " no", "No", " No", "NO")
@@ -87,7 +95,7 @@ class BatteryRunner:
 
         out = []
         for family, qs in by_family.items():
-            mnt = MAX_NEW_TOKENS[family]
+            mnt = MAX_NEW_TOKENS.get(family, _DEFAULT_MNT)
             for i in range(0, len(qs), self.batch_size):
                 chunk = qs[i: i + self.batch_size]
                 prompts = [self._format(stimulus["prompt"], q["text"]) for q in chunk]
