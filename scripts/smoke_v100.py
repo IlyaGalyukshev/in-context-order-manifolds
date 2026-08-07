@@ -103,7 +103,7 @@ def free(model):
     torch.cuda.empty_cache()
 
 
-def smoke_model(name: str, spec: dict, out_dir: Path) -> dict:
+def smoke_model(name: str, spec: dict, out_dir: Path, load_only: bool = False) -> dict:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     hf_id = spec["hf_id"]
@@ -142,7 +142,19 @@ def smoke_model(name: str, spec: dict, out_dir: Path) -> dict:
 
     logits16, gens = run_pass(model, tok, prompts, "cuda:0", generate=True)
     rec["think_leakage"] = sum("<think>" in g for g in gens) if is_qwen3 else None
+
+    # samples for human eyeballing — write NOW so they exist even in --load-only
+    # (and even if a later fp32 pass OOMs on a big model on one card).
+    with open(out_dir / f"samples_{name}.txt", "w") as f:
+        for p, g in zip(PROMPTS, gens):
+            f.write(f"PROMPT: {p}\nGEN   : {g}\n{'-' * 70}\n")
     free(model)
+
+    if load_only:  # skip the fp32-KL reference (OOMs for >7B on one card)
+        rec["verdict"] = ("LOAD_OK" if rec["hidden_states_ok"] and not rec["think_leakage"]
+                          else "LOAD_FAIL")
+        print(json.dumps(rec, indent=2), flush=True)
+        return rec
 
     # --- fp32 pass (reference) ---
     t0 = time.monotonic()
@@ -170,11 +182,7 @@ def smoke_model(name: str, spec: dict, out_dir: Path) -> dict:
         else "FAIL"
     )
 
-    # samples for human eyeballing — mandatory review artifact
-    with open(out_dir / f"samples_{name}.txt", "w") as f:
-        for p, g in zip(PROMPTS, gens):
-            f.write(f"PROMPT: {p}\nGEN   : {g}\n{'-' * 70}\n")
-    print(json.dumps(rec, indent=2), flush=True)
+    print(json.dumps(rec, indent=2), flush=True)  # samples already written above
     return rec
 
 
@@ -183,6 +191,8 @@ def main() -> None:
     ap.add_argument("--models", required=True, help="comma-separated short names from models.yaml")
     ap.add_argument("--config", default="configs/models.yaml")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--load-only", action="store_true",
+                    help="fp16 load + generations only (skip the fp32-KL reference; OOM-safe for >7B on one card)")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -192,7 +202,7 @@ def main() -> None:
     results = []
     for name in args.models.split(","):
         try:
-            results.append(smoke_model(name.strip(), roster[name.strip()], out_dir))
+            results.append(smoke_model(name.strip(), roster[name.strip()], out_dir, args.load_only))
         except Exception as e:  # keep going: one bad model must not sink the matrix
             results.append({"model": name, "verdict": "ERROR", "error": f"{type(e).__name__}: {e}"})
             print(f"ERROR on {name}: {e}", flush=True)
