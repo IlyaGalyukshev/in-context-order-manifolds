@@ -88,23 +88,32 @@ def main():
                 for idx in range(args.per_cell):
                     for N in struct_N:
                         clens = [N - N // 2, N // 2]          # 2 chains summing to N
-                        for cond in conds:
-                            st = build_partial_order(fams[0], 2, 0, SEED, idx, vocab,
-                                                     d=args.degree, condition=cond,
-                                                     chain_lens=clens, difficulty=diff)
-                            st["difficulty"] = diff
-                            fs.write(json.dumps(st) + "\n"); n_struct += 1
-                            if cond == conds[0]:
-                                for q in make_partial_battery(st):
-                                    fq.write(json.dumps(q) + "\n"); n_q += 1
-                        for cond in conds:
-                            st = build_grid2d("s1_size", "s1_loud", N, SEED, idx, vocab,
-                                              d=args.degree, condition=cond, difficulty=diff)
-                            st["difficulty"] = diff
-                            fs.write(json.dumps(st) + "\n"); n_struct += 1
-                            if cond == conds[0]:
-                                for q in make_grid_battery(st):
-                                    fq.write(json.dumps(q) + "\n"); n_q += 1
+                        # partial_order over ALL families (was fams[0] only -> only s0).
+                        for pfam in fams:
+                            for cond in conds:
+                                st = build_partial_order(pfam, 2, 0, SEED, idx, vocab,
+                                                         d=args.degree, condition=cond,
+                                                         chain_lens=clens, difficulty=diff)
+                                st["difficulty"] = diff
+                                fs.write(json.dumps(st) + "\n"); n_struct += 1
+                                if cond == conds[0]:
+                                    for q in make_partial_battery(st):
+                                        fq.write(json.dumps(q) + "\n"); n_q += 1
+                        # grid2d over an axis-pair list: the semantic pair AND an ABSTRACT
+                        # pair (two independent nonce orders -> 2D over nonce, clean form
+                        # litmus) + optional semantic ablations when s1_heat is present.
+                        grid_pairs = [("s1_size", "s1_loud"), ("s0_zib", "s0_quomp")]
+                        if "s1_heat" in fams:
+                            grid_pairs += [("s1_size", "s1_heat"), ("s1_loud", "s1_heat")]
+                        for fx, fy in grid_pairs:
+                            for cond in conds:
+                                st = build_grid2d(fx, fy, N, SEED, idx, vocab,
+                                                  d=args.degree, condition=cond, difficulty=diff)
+                                st["difficulty"] = diff
+                                fs.write(json.dumps(st) + "\n"); n_struct += 1
+                                if cond == conds[0]:
+                                    for q in make_grid_battery(st):
+                                        fq.write(json.dumps(q) + "\n"); n_q += 1
                         # cyclic ring (nonlinear litmus) — once per (idx,N,family), no
                         # easy/hard split (a ring is position-symmetric).
                         if diff == diffs[0]:

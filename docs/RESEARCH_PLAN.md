@@ -219,10 +219,36 @@ Built and verified on CPU:
   TwoNN recovers dimension; nonlinear beats linear on a curved manifold;
   transfer across N; projection axis tracks rank). `benchmark_strata.py` +
   committed strata.
-- `extract_activations.py` stores structure coordinates (grid axes / partial
-  chains) for Phase E.
+- `extract_activations.py` stores structure coordinates (grid axes `coord_x/y`,
+  partial-order chains, ring `cyclic_pos`) plus `is_null`/`difficulty` in meta, so
+  every downstream probe reads them alongside `ranks` — one extractor, all forms.
 
-Remaining, GPU-side (implement at bring-up where they can be smoke-tested):
-the query-token extraction pass (Result-C locus) and the SSM/MoE `smoke_v100.py`
-extension (forward + hidden-state exposure + router logits). No headline results
-yet — extraction awaits a card.
+### Parameterized experiment scripts (one tool per question, run with args)
+The experiments are driven by a small set of parameterized scripts, not one-offs:
+- **`probe_interior.py`** — the interior-only rank decode (primary geometry metric).
+  Args select the *locus* (`--scheme name|readout|last_token|card_mean`), the
+  *condition*, the *difficulty* (`--difficulty all|easy|hard`), and turn on the
+  **coherence increment** (`--coherence`: decode the incoherent-cycle twins and
+  report real−twin, the load-bearing BCS metric). So the locus comparison, the
+  difficulty split, and the signal-vs-N sweep are all the *same* script over
+  different `--acts`/args.
+- **`probe_shape.py`** — the flagship **contrastive-bottleneck emergent-shape
+  litmus**: an MLP encoder trained (form-neutrally) so structure-graph neighbors
+  are close in a 3-D latent, read out-of-fold, with per-stimulus persistent
+  homology (betti₁), participation-ratio dimension, and principal-curve curvature
+  vs a per-structure permutation null (paired CI). `--structure total_order|cyclic|
+  grid2d` picks the metric (line / wrap-around ring / 2-D grid). Answers "does the
+  model build shape Y from imposed X, and where Y≠X".
+- **Diffusion causal test of query-local assembly**: the same extraction +
+  query-token pass run on a bidirectional diffusion LM (Dream-7B) vs its own AR
+  ancestor (Qwen2.5-7B) — the resting-map decode discriminates "order assembled
+  under the query" from "order stored as a map at rest".
+
+Method controls now checked on-data: tokenization (entity subword-count ⟂ signal),
+locus (all four schemes), difficulty split, and the signal-vs-N curve — each via
+the parameterized probes above.
+
+Remaining, GPU-side: broaden the roster replication (≥3 models per claim), pin the
+extraction pipeline (transformers version + model snapshot) so absolute decode
+numbers are reproducible across runs, and add the query-token pass to the SSM/MoE
+`smoke_v100.py` extension.

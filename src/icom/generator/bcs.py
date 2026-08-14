@@ -53,6 +53,13 @@ RELATIONS = {
         "s0_zib", "zibs", "is zibbed by", "first", "last", "earlier in the zib-order",
         preamble="In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.",
     ),
+    # S0 second axis: an INDEPENDENT arbitrary symbolic relation, so that grid2d can
+    # be built over two abstract nonce orders (2D over nonce, no reliance on the
+    # familiar size/loud semantics) -> a clean abstract form-litmus.
+    "s0_quomp": Relation(
+        "s0_quomp", "quomps", "is quomped by", "first", "last", "earlier in the quomp-order",
+        preamble="In this puzzle, 'quomps' is a transitive relation: if X quomps Y and Y quomps Z, then X quomps Z. 'X quomps Y' means X comes before Y in the quomp-order.",
+    ),
     # S1 — meaningful transitive comparatives over nonce entities
     "s1_size": Relation("s1_size", "is smaller than", "is larger than", "smallest", "largest", "smaller"),
     "s1_loud": Relation("s1_loud", "is quieter than", "is louder than", "quietest", "loudest", "quieter"),

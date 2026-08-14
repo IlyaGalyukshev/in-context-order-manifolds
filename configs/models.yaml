@@ -47,6 +47,20 @@ models:
   # analyses for free; open pretraining data verifies nonce-entity novelty.
   olmo3-7b:      { hf_id: allenai/Olmo-3-1025-7B,     <<: *v100, arch: dense, checkpoints: true, role: base }
   olmo3-7b-inst: { hf_id: allenai/Olmo-3-7B-Instruct, <<: *v100, arch: dense, role: instruct }
+  # Post-training axis: Base/Instruct/Think/RL-Zero share pretrain+arch+tokenizer,
+  # ONLY post-training differs -> the cheapest causal test in the project. Is the
+  # thin low-variance order axis (§6.12) a PRETRAIN or an RL/SFT property? If it is
+  # already in Base and does not thicken in Think -> pretrain. If it appears/
+  # strengthens in Think/RL-Zero -> causal reading of the "solves better -> thicker
+  # axis" correlation (§6.11, now 2 points). RL-Zero = RL directly from Base ->
+  # isolates the RL effect. Think reasons natively: give it a 2-4K decode budget to
+  # de-confound the reconstruction 160-token truncation artifact (§6.10). Bonus
+  # nobody else has: open Dolma 3 + full pretrain checkpoints -> (a) at which step
+  # the axis emerges, (b) grep the nonces (blene/crusk/groaft) in Dolma to turn "no
+  # pretrain support" from argument-from-construction into a MEASURED fact (§6.13).
+  olmo3-7b-think:  { hf_id: allenai/Olmo-3-7B-Think,   <<: *v100, arch: dense, role: reasoning, note: "HF-verified; give 2-4K decode budget for the reconstruction gate" }
+  # RL-Zero is a FAMILY of task-specific checkpoints, NOT one repo: allenai/Olmo-3-7B-RL-Zero-{Math,IF,Mix,General} (+ Olmo-3.1-7B-RL-Zero-Code). Use -General or -Mix for the RL-vs-pretrain axis.
+  olmo3-7b-rlzero: { hf_id: allenai/Olmo-3-7B-RL-Zero-General, <<: *v100, arch: dense, role: rl, note: "HF-verified (family, not monolithic); RL directly from Base -> isolates RL's effect on the order axis" }
   # Scale axis: Qwen3 dense, Apache 2.0, ungated. Battery: enable_thinking=false.
   qwen3-1.7b: { hf_id: Qwen/Qwen3-1.7B, <<: *v100, arch: dense, role: instruct }
   qwen3-4b:   { hf_id: Qwen/Qwen3-4B,   <<: *v100, arch: dense, role: instruct }
@@ -55,6 +69,29 @@ models:
   # Small fully-open point; NoPE-interleaved layers (every 4th has no positional
   # encoding) -> a built-in contrast for the position-confound analyses.
   smollm3-3b: { hf_id: HuggingFaceTB/SmolLM3-3B, <<: *v100, arch: dense, optional: true }
+
+  # --- Scale ladders 2026 (fixed family/data/tokenizer -> a CLEAN scale axis for
+  #     H1 and the behavior<->axis-thickness thesis; turns the 2-point §6.11
+  #     correlation into a real curve; satisfies the >=3-model replication rule per
+  #     axis). Two independent ladders. Newest top-tier; verify hf_id + arch first. -
+  # Qwen3.5 ladder 0.8/2/4/9B (fp16 ~1.6/4/8/18GB). HF-verified 2026-08: NOT dense —
+  # HYBRID Gated-DeltaNet linear-attention (24 linear + 8 full, 3:1) AND multimodal
+  # VLMs (Qwen3_5ForConditionalGeneration). There is NO dense text-only ladder. So
+  # this is a SCALE axis WITHIN a hybrid-VLM family, not a dense one. V100 risk is
+  # NOT memory but the linear-attention (Gated-DeltaNet / causal-conv1d / fla) kernels
+  # on SM70 + VLM plumbing -> smoke_v100 REQUIRED; no dense fallback exists.
+  # Too big for V100 fp16 (EXCLUDED): Qwen3.5-27B, Qwen3.6 (35B-A3B / 27B dense).
+  qwen3.5-0.8b: { hf_id: Qwen/Qwen3.5-0.8B, dtype: float16, attn_implementation: eager, arch: hybrid_vlm, note: "Gated-DeltaNet linear-attn + VLM; smoke_v100 (fla kernels)" }
+  qwen3.5-2b:   { hf_id: Qwen/Qwen3.5-2B,   dtype: float16, attn_implementation: eager, arch: hybrid_vlm, note: "same hybrid stack; smoke_v100" }
+  qwen3.5-4b:   { hf_id: Qwen/Qwen3.5-4B,   dtype: float16, attn_implementation: eager, arch: hybrid_vlm, note: "same hybrid stack; smoke_v100" }
+  # qwen3.5-9b already RUN (gate 0.62-0.76 + readout+RSA, §6.11); listed in exploratory.
+  # Gemma-4 ladder (HF-verified 2026-08: now Apache-2.0). Weights are UNQUANTIZED bf16
+  # safetensors -> V100 has no bf16 -> load fp16 + fp16-OVERFLOW smoke MANDATORY
+  # (gemma-3 lineage had overflow). E2B/E4B are MatFormer (5.1B/2.3B-eff, 8.1B/4.5B-eff).
+  # Accessible on V100: E2B/E4B/12B. Too big (EXCLUDED): 26B-A4B MoE, 31B dense.
+  gemma-4-e2b:    { hf_id: google/gemma-4-E2B-it, dtype: float16, attn_implementation: eager, arch: dense, note: "HF-verified; bf16->fp16 cast + overflow smoke; MatFormer 5.1B/2.3B-eff" }
+  gemma-4-e4b:    { hf_id: google/gemma-4-E4B-it, dtype: float16, attn_implementation: eager, arch: dense, note: "HF-verified; bf16->fp16 cast + overflow smoke; MatFormer 8.1B/4.5B-eff" }
+  gemma-4-12b-it: { hf_id: google/gemma-4-12B-it, dtype: float16, attn_implementation: eager, arch: dense, role: instruct, note: "RUN (§6.11): gate 0.82-0.83; ~24GB fp16 (tight); needs transformers 5.13.0 on V100" }
 
   # --- MoE (sparse routing) -------------------------------------------------
   # Fully open MoE, 7B total / ~1B active, incl. checkpoints -> the open MoE
@@ -73,6 +110,17 @@ models:
   # LM does not follow the answer format -> 100% parse-fail on the battery).
   falcon-mamba-7b:     { hf_id: tiiuae/falcon-mamba-7b, dtype: float16, arch: ssm, role: base, note: "mamba_ssm kernels may not build on SM70; HF slow fallback for extraction; smoke first" }
   falcon-mamba-7b-inst: { hf_id: tiiuae/falcon-mamba-7b-instruct, dtype: float16, arch: ssm, role: instruct, note: "instruct sibling for the behavior gate" }
+  # NB: olmoe-1b-7b + falcon-mamba-7b are UNDONE (gate ~21-24%, no extraction) and
+  # dated. The 2026 replacements below give the attention-vs-SSM axis enough points
+  # to be a claim, not an anecdote — and fold in reasoning at the same point. All
+  # ~14-16GB fp16; smoke_v100 first (Mamba/SSM kernels may not build on SM70 ->
+  # HF slow/eager fallback for extraction is acceptable, correct, slower).
+  falcon-h1r-7b:  { hf_id: tiiuae/Falcon-H1R-7B,             dtype: float16, attn_implementation: eager, arch: hybrid, note: "HF-verified; Mamba2+Transformer + reasoning; LICENSE: custom Falcon-LLM (not Apache); smoke_v100" }
+  nemotron-h-8b:  { hf_id: nvidia/Nemotron-H-8B-Base-8K,     dtype: float16, attn_implementation: eager, arch: hybrid, note: "HF-verified; SSM-Attention (Mamba-2 + MLP + 4 attn); LICENSE: NVIDIA research-only/non-commercial; BASE-ONLY (no instruct) -> gate parse-fail risk; smoke_v100" }
+  # HF-verified correction: granite-4.1-8b is DENSE (GraniteForCausalLM), NOT a Mamba hybrid.
+  # IBM's ~8B Mamba2-Transformer hybrid is granite-4.0-h-tiny (7B-A1B MoE hybrid). Use that
+  # for the hybrid axis; keep granite-4.1-8b only as an extra DENSE point if wanted.
+  granite-4.0-h-tiny: { hf_id: ibm-granite/granite-4.0-h-tiny, dtype: float16, attn_implementation: eager, arch: hybrid_moe, note: "HF-verified; Mamba2-Transformer hybrid, 7B/1B-active; third hybrid family; smoke_v100" }
 
 # --------------------------------------------------------------- CONFIRMATORY
 # Scale-up confirmation. 32B fp16 = ~64GB weights -> extraction across 3x V100
@@ -87,7 +135,29 @@ exploratory:
   zamba2-7b:      { hf_id: Zyphra/Zamba2-7B,        dtype: float16, arch: hybrid, note: "Mamba2 + shared-attention; needs mamba_ssm; verify SM70" }
   deepseek-v2-lite: { hf_id: deepseek-ai/DeepSeek-V2-Lite, dtype: float16, arch: moe, note: "16B/2.4B active, MLA attention, trust_remote_code; V100 compat uncertain" }
   rwkv7-goose:    { hf_id: fla-hub/rwkv7-1.5B-world, dtype: float16, arch: linear_rnn, note: "RWKV-7 linear-attention RNN; hf_id + FLA kernels to verify" }
-  qwen3.5-9b:     { hf_id: Qwen/Qwen3.5-9B,          dtype: float16, arch: hybrid, note: "Gated-DeltaNet family; hf_id to re-verify" }
+  qwen3.5-9b:     { hf_id: Qwen/Qwen3.5-9B,          dtype: float16, arch: hybrid_vlm, note: "HF-verified: Gated-DeltaNet linear-attn (24 linear+8 full) + multimodal VLM; NOT dense; smoke_v100 (fla kernels)" }
+
+# --------------------------------------------------------------- DIFFUSION-LM
+# A DIFFERENT answer to the central question, not just another grid model, and the
+# HIGHEST-leverage new track. Masked-diffusion LMs are bidirectional and denoise
+# the whole sequence in parallel -> they physically CANNOT assemble order left-to-
+# right under the query. So if query-local holds for AR (§6.15), a diffusion LM is
+# FORCED to store order as a RESTING map -> the first direct test of §10-A that
+# needs NO query-time extraction (the falsifiable prediction: resting distance-
+# decode >= query decode, NOT 2-3x weaker as in AR). Near-perfect control: Dream-7B
+# is initialized from AR Qwen-2.5-7B weights (same pretrain, different objective)
+# -> AR vs diffusion at controlled weight origin. Indirect signal it matters:
+# on Countdown/Sudoku (our task-type) diffusion beats same-size AR as planning
+# depth grows. PIPELINE ADAPTATION NEEDED: bidirectional attention voids the
+# readout-locus (every token sees all) -> locus rethink; the behavior gate needs
+# diffusion-decoding, not AR-gen. Hidden-state extraction is still a single forward.
+diffusion:
+  # All HF-verified 2026-08 (weights released, bf16 safetensors -> load fp16 on V100).
+  dream-7b-inst: { hf_id: Dream-org/Dream-v0-Instruct-7B, dtype: float16, arch: diffusion, note: "HF-verified; init from AR Qwen-2.5-7B -> the AR-vs-diffusion control (Apache-2.0)" }
+  dream-7b-base: { hf_id: Dream-org/Dream-v0-Base-7B,     dtype: float16, arch: diffusion, note: "HF-verified; base sibling" }
+  llada-8b-inst: { hf_id: GSAI-ML/LLaDA-8B-Instruct,      dtype: float16, arch: diffusion, note: "HF-verified; second diffusion family (from scratch); LICENSE: MIT" }
+  llada-moe:     { hf_id: inclusionAI/LLaDA-MoE-7B-A1B-Instruct, dtype: float16, arch: diffusion_moe, note: "HF-verified; MoE diffusion 7B/1.4B-active (Apache-2.0)" }
+  illada-8b:     { hf_id: GSAI-ML/iLLaDA-8B-Instruct, dtype: float16, arch: diffusion, note: "HF-verified: WEIGHTS RELEASED (ILLaDAForCausalLM, bf16, Apache-2.0); Jun 2026 ByteDance+RUC" }
 
 # Excluded, with reasons:
 #   gemma-3   — bf16-trained with fp16-overflow history; V100 has no bf16; gated

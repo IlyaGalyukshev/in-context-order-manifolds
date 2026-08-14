@@ -40,15 +40,22 @@ def cv_spearman(Xr, y, g, alpha=10.0):
     return abs(spearmanr(oob, y)[0])
 
 
-def load(acts, model, family, condition, layer, scheme):
+def load(acts, model, family, condition, layer, scheme, is_null=False, difficulty="all"):
+    """is_null selects the coherence-null twins; difficulty in {all,easy,hard} filters by the
+    stored difficulty label. Backward-compatible with older acts whose meta lacks is_null."""
     Xs, ranks, groups = [], [], []
     for gi, f in enumerate(sorted((Path(acts) / model).glob("*.npz"))):
         z = np.load(f, allow_pickle=False)
         m = json.loads(str(z["meta"]))
-        if m["family"] == family and m["condition"] == condition and scheme in z.files:
-            Xs.append(z[scheme][:, layer, :].astype(np.float32))
-            ranks.append(z["ranks"])
-            groups.append(np.full(len(z["ranks"]), gi))
+        if m["family"] != family or m["condition"] != condition or scheme not in z.files:
+            continue
+        if bool(m.get("is_null", False)) != is_null:
+            continue
+        if difficulty != "all" and m.get("difficulty") not in (difficulty, None):
+            continue
+        Xs.append(z[scheme][:, layer, :].astype(np.float32))
+        ranks.append(z["ranks"])
+        groups.append(np.full(len(z["ranks"]), gi))
     if not Xs:
         return None
     return np.concatenate(Xs), np.concatenate(ranks), np.concatenate(groups)
@@ -82,15 +89,22 @@ def main():
     ap.add_argument("--scheme", default="name")
     ap.add_argument("--layer", type=int, default=None, help="fixed layer; else sweep-best")
     ap.add_argument("--n-perm", type=int, default=100)
+    ap.add_argument("--difficulty", default="all", choices=["all", "easy", "hard"],
+                    help="filter stimuli by difficulty label (from meta)")
+    ap.add_argument("--coherence", action="store_true",
+                    help="also decode the coherence-null twins (is_null) and report the real-twin increment")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
+    def ld(model, layer, is_null=False):
+        return load(args.acts, model, args.family, args.condition, layer, args.scheme,
+                    is_null=is_null, difficulty=args.difficulty)
+
     rows = []
     for model in args.models.split(","):
-        # find best layer by all-ranks probe if not fixed
-        probe0 = load(args.acts, model, args.family, args.condition, 0, args.scheme)
+        probe0 = ld(model, 0)
         if probe0 is None:
-            print(f"{model}: no data for {args.family}/{args.condition}/{args.scheme}")
+            print(f"{model}: no data for {args.family}/{args.condition}/{args.scheme}/{args.difficulty}")
             continue
         n_layers = None
         for gi, f in enumerate(sorted((Path(args.acts) / model).glob("*.npz"))):
@@ -100,7 +114,7 @@ def main():
         layers = [args.layer] if args.layer is not None else range(n_layers)
         best = None
         for L in layers:
-            X, ranks, groups = load(args.acts, model, args.family, args.condition, L, args.scheme)
+            X, ranks, groups = ld(model, L)
             N = int(ranks.max())
             interior = (ranks >= 3) & (ranks <= N - 2)
             allr = cv_spearman(
@@ -111,15 +125,26 @@ def main():
         L, _, X, ranks, groups, interior, N = best
         ra, na, pa = probe_with_null(X, ranks, groups, args.n_perm)
         ri, ni, pi = probe_with_null(X[interior], ranks[interior], groups[interior], args.n_perm)
+        # coherence increment (real interior - twin interior at the SAME layer): the load-bearing
+        # BCS metric — a coherent order should decode ABOVE its incoherent-cycle twin (local chaining).
+        coh = twin_i = None
+        if args.coherence:
+            T = ld(model, L, is_null=True)
+            if T is not None:
+                Xt, rt, gt = T; it = (rt >= 3) & (rt <= int(rt.max()) - 2)
+                twin_i, _, _ = probe_with_null(Xt[it], rt[it], gt[it], args.n_perm)
+                coh = ri - twin_i
         rows.append(dict(model=model, family=args.family, condition=args.condition,
-                         scheme=args.scheme, layer=L, N=N,
+                         scheme=args.scheme, difficulty=args.difficulty, layer=L, N=N,
                          all_probe=round(ra, 3), all_null95=round(na, 3), all_p=round(pa, 4),
-                         interior_probe=round(ri, 3), interior_null95=round(ni, 3),
-                         interior_p=round(pi, 4), interior_n_per_stim=int(interior.sum() // len(np.unique(groups)))))
-        r = rows[-1]
+                         interior_probe=round(ri, 3), interior_null95=round(ni, 3), interior_p=round(pi, 4),
+                         twin_interior=round(twin_i, 3) if twin_i is not None else None,
+                         coherence_increment=round(coh, 3) if coh is not None else None,
+                         interior_n_per_stim=int(interior.sum() // len(np.unique(groups)))))
         verdict = "SURVIVES" if (ri > ni and pi < 0.05) else "COLLAPSES (endpoint artifact)"
-        print(f"{model:14s} {args.family}/{args.condition} {args.scheme} L{L} N={N} | "
-              f"ALL={ra:.2f}(p={pa:.3f}) INTERIOR={ri:.2f}(null95={ni:.2f},p={pi:.3f}) -> {verdict}", flush=True)
+        cohs = f" COH(real-twin)={coh:+.3f}" if coh is not None else ""
+        print(f"{model:14s} {args.family}/{args.condition} {args.scheme} diff={args.difficulty} L{L} N={N} | "
+              f"ALL={ra:.2f}(p={pa:.3f}) INTERIOR={ri:.2f}(null95={ni:.2f},p={pi:.3f}){cohs} -> {verdict}", flush=True)
 
     if args.out:
         import pandas as pd

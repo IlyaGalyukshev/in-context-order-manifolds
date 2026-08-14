@@ -72,6 +72,8 @@ def main() -> None:
         if "within_rank" in st:
             extra["within_rank"] = np.array([st["within_rank"][e] for e in st["latent_order"]])
             extra["chain_of"] = np.array([st["chain_of"][e] for e in st["latent_order"]])
+        if "cyclic_pos" in st:  # ring position for the cyclic form litmus
+            extra["cyclic_pos"] = np.array([st["cyclic_pos"][e] for e in st["latent_order"]])
         np.savez_compressed(
             path,
             ranks=rec["ranks"], slots=rec["slots"],
@@ -79,6 +81,8 @@ def main() -> None:
             meta=json.dumps({"family": st["family"], "condition": st["condition"],
                              "n_items": st["n_items"], "content_key": st["content_key"],
                              "structure": st.get("structure", "total_order"),
+                             "is_null": bool(st.get("is_null", False)),
+                             "difficulty": st.get("difficulty"),
                              "n_tokens": rec["n_tokens"], "model": args.model}),
             **rec["pooled"], **extra,
         )
