@@ -15,21 +15,35 @@ from pathlib import Path
 import numpy as np
 
 
-def load_records(acts, model, family, condition, scheme, N=None, structure=None):
+def _scheme_key(z, scheme):
+    """Canonical scheme key ('name'/'readout'/...) or the legacy 'loc_<scheme>' layout."""
+    if scheme in z.files:
+        return scheme
+    if ("loc_" + scheme) in z.files:
+        return "loc_" + scheme
+    return None
+
+
+def load_records(acts, model, family, condition, scheme, N=None, structure=None, is_null=False):
     """List of {X:[N,L,D] float32, ranks:[N] int, N:int, content_key:str}.
-    `structure` (e.g. 'total_order', 'cyclic', 'grid2d', 'partial_order') filters
-    on meta.structure so cyclic and total-order cells are not mixed."""
+    `structure` (e.g. 'total_order', 'cyclic', 'grid2d', 'partial_order') filters on
+    meta.structure so cyclic and total-order cells are not mixed. `is_null` selects the
+    coherence-null twins (when real + null share one acts dir). Reads canonical or the
+    legacy 'loc_<scheme>' array layout."""
     recs = []
     for f in sorted((Path(acts) / model).glob("*.npz")):
         z = np.load(f, allow_pickle=False)
         m = json.loads(str(z["meta"]))
-        if m["family"] != family or m["condition"] != condition or scheme not in z.files:
+        key = _scheme_key(z, scheme)
+        if m["family"] != family or m["condition"] != condition or key is None:
+            continue
+        if bool(m.get("is_null", False)) != is_null:
             continue
         if N is not None and int(m["n_items"]) != int(N):
             continue
         if structure is not None and m.get("structure", "total_order") != structure:
             continue
-        recs.append({"X": z[scheme].astype(np.float32), "ranks": z["ranks"].astype(int),
+        recs.append({"X": z[key].astype(np.float32), "ranks": z["ranks"].astype(int),
                      "N": int(m["n_items"]), "content_key": m["content_key"]})
     return recs
 

@@ -108,12 +108,17 @@ def sweep_cell(acts, model, family, condition, N, scheme, n_perm, seed,
             transfer[f"to_{transfer_condition}"] = _r(transfer_spearman(Xint[peak], yint, b[0], b[1]))
 
     coh_null = None
-    if null_acts:
-        recs_z = load_records(null_acts, model, family, condition, scheme, N=N)
-        z = stack_layer(recs_z, peak, interior_only=True) if recs_z else None
-        if z:
-            rz, nz, pz = probe_with_null(*z, n_perm=n_perm, seed=seed)
-            coh_null = dict(interior=_r(rz), null95=_r(nz), p=_r(pz, 4))
+    # coherence-null twins: a separate --null-acts dir, or (default) the is_null twins that
+    # share this acts dir. The coherence INCREMENT (real peak - twin) is the load-bearing BCS
+    # metric — a coherent order must decode above its incoherent-cycle twin (local chaining).
+    recs_z = (load_records(null_acts, model, family, condition, scheme, N=N)
+              if null_acts else
+              load_records(acts, model, family, condition, scheme, N=N, is_null=True))
+    z = stack_layer(recs_z, peak, interior_only=True) if recs_z else None
+    if z:
+        rz, nz, pz = probe_with_null(*z, n_perm=n_perm, seed=seed)
+        coh_null = dict(interior=_r(rz), null95=_r(nz), p=_r(pz, 4),
+                        increment=_r(peak_score - rz))
 
     # FWER-corrected verdict: peak must beat the max-over-layers null.
     survives = p_fwer is not None and p_fwer < 0.05
