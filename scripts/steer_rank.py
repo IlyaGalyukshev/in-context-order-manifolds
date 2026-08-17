@@ -1,182 +1,203 @@
 #!/usr/bin/env python
-"""Track C: causal test of the order manifold's inertness.
+"""Track C: causal test of the order axis — is it USED as a lever, or an epiphenomenal trace?
 
-Learn the manifold's rank axis from the probe, add it to ONE item's residual
-stream at run time, and measure (a) the item's internally-decoded rank and
-(b) the model's answered rank, as a function of dose alpha, vs a matched-norm
-random direction.
+Learn the ridge rank-axis at a (layer, locus), add it to ONE mid-rank entity's residual stream
+at run time, and measure the shift in (a) the internally-decoded rank (propagated to a peak
+layer) and (b) the model's ANSWERED rank — as a function of dose alpha — against a MATCHED-NORM
+OFF-AXIS control (a random direction orthogonalised to the rank axis, same norm). The matched-
+norm control is mandatory: without it, steering itself becomes confirmation bias.
 
-Decisive reads:
-  along-manifold moves INTERNAL decoded rank, dose-dependent, >> random
-    => the direction is causal for the representation (manifold is real).
-  along-manifold moves BEHAVIOUR (answered rank) weakly / << its internal
-    effect => the manifold is behaviourally INERT (encoded, not deployed).
-  along-manifold moves behaviour ~ proportionally => it IS deployed.
+Decisive reads (both publishable):
+  along-axis moves the answered rank predictably, off-axis (matched norm) only noises
+    => the axis is CAUSALLY USED (not an epiphenomenon); the confirmation-bias charge is
+       causally dismissed.
+  along-axis does not move behaviour => the axis is a fingerprint, order is computed off-axis
+    => strengthens query-local ("no map even as a lever").
+Sweep layer x locus (--steer-layers x --scheme): readout may carry the axis as a trace while
+the lever lives on in-card mention tokens.
 
-Steer at the manifold-peak layer; read internal rank at the LAST layer (so a
-non-trivial effect requires the perturbation to PROPAGATE, not just be re-read).
+Reuses the repo conventions: models.yaml for the model spec, and the same acts (from
+extract_activations.py, all layers) that the geometry probes read. One parameterized tool.
+
+Usage:
+  python scripts/steer_rank.py --acts <dir> --stimuli <stimuli.jsonl> --model gemma-4-12b-it \
+      --families s0_zib --scheme readout --out steer.parquet
 """
-
 from __future__ import annotations
-
-import argparse
-import json
-import re
+import argparse, json, re
 from pathlib import Path
-
 import numpy as np
 import torch
+import yaml
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 
-PEAK = {("qwen3-4b", "relational"): 22, ("qwen3-4b", "tagged"): 20,
-        ("olmo3-7b-inst", "relational"): 18, ("olmo3-7b-inst", "tagged"): 15}
-HF = {"qwen3-4b": "Qwen/Qwen3-4B", "olmo3-7b-inst": "allenai/Olmo-3-7B-Instruct"}
+
+def resolve_model(models_config, name):
+    roster = {}
+    mcfg = yaml.safe_load(open(models_config))
+    for sec in ("models", "confirmatory", "exploratory"):
+        roster.update(mcfg.get(sec) or {})
+    return roster[name]
 
 
-def name_token_ids(prompt, entity, tok):
+def mention_token_ids(prompt, entity, tok, which="all"):
+    """token indices of 'The <entity>' mentions. which='all' (name locus, every mention) or
+    'last' (readout locus, the roster mention after all cards)."""
     enc = tok(prompt, return_offsets_mapping=True, add_special_tokens=False)
     offs = enc["offset_mapping"]
-    ids = []
+    spans = []
     for m in re.finditer(rf"\b[Tt]he {re.escape(entity)}\b", prompt):
         lo, hi = m.start() + 4, m.end()
-        ids += [i for i, (s, e) in enumerate(offs) if s < hi and e > lo and e > s]
-    return sorted(set(ids))
+        spans.append([i for i, (s, e) in enumerate(offs) if s < hi and e > lo and e > s])
+    if not spans:
+        return []
+    return sorted(set(spans[-1] if which == "last" else [i for sp in spans for i in sp]))
 
 
-def fit_probe(acts_dir, model, family, condition, layer, pca=64):
-    """Return (rank direction in raw D-space, unit; probe fn on raw x -> norm rank)."""
+def fit_axis(acts_dir, model, family, condition, scheme, layer, pca=64):
+    """Ridge rank-axis at (scheme, layer) in raw D-space (unit) + a decode fn + natural spread."""
     Xs, ys = [], []
     for f in sorted((Path(acts_dir) / model).glob("*.npz")):
-        z = np.load(f, allow_pickle=False)
-        meta = json.loads(str(z["meta"]))
-        if meta["family"] == family and meta["condition"] == condition:
-            Xs.append(z["name"][:, layer, :].astype(np.float32))
+        z = np.load(f, allow_pickle=False); m = json.loads(str(z["meta"]))
+        if m.get("family") == family and m.get("condition") == condition and scheme in z.files \
+                and not bool(m.get("is_null", False)):
+            Xs.append(z[scheme][:, layer, :].astype(np.float32))
             r = z["ranks"]; ys.append((r - r.min()) / (r.max() - r.min()))
+    if not Xs:
+        return None
     X = np.concatenate(Xs); y = np.concatenate(ys)
     sc = StandardScaler().fit(X)
-    pc = PCA(n_components=pca, random_state=0).fit(sc.transform(X))
+    pc = PCA(n_components=min(pca, X.shape[0] - 1), random_state=0).fit(sc.transform(X))
     rg = Ridge(alpha=10.0).fit(pc.transform(sc.transform(X)), y)
-    # d(decoded rank)/d(x) in raw space = (1/scale) * components^T * coef
     grad = (pc.components_.T @ rg.coef_) / sc.scale_
     v = grad / (np.linalg.norm(grad) + 1e-9)
-    def probe(xraw):  # xraw [n, D] -> decoded norm rank
+
+    def decode(xraw):
         return rg.predict(pc.transform(sc.transform(xraw)))
-    spread_raw = float(np.std(X @ v))  # natural std of RAW activations along the rank axis
-    return v.astype(np.float32), probe, spread_raw
+    from scipy.stats import spearmanr
+    fit_q = abs(spearmanr(X @ v, y)[0] or 0)
+    return v.astype(np.float32), decode, float(np.std(X @ v)), fit_q
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--acts", required=True)
-    ap.add_argument("--stimuli", required=True)
-    ap.add_argument("--model", default="qwen3-4b")
-    ap.add_argument("--families", default="relational,tagged")
+    ap.add_argument("--acts", required=True); ap.add_argument("--stimuli", required=True)
+    ap.add_argument("--models-config", default="configs/models.yaml")
+    ap.add_argument("--model", default="gemma-4-12b-it")
+    ap.add_argument("--families", default="s0_zib")
+    ap.add_argument("--scheme", default="readout", help="locus to steer/read: name|readout")
+    ap.add_argument("--condition", default="shuffle")
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-stim", type=int, default=16)
     ap.add_argument("--alphas", default="-8,-4,-2,0,2,4,8")
-    ap.add_argument("--steer-layers", default="", help="comma ints; default 25/50/75% depth")
+    ap.add_argument("--steer-layers", default="", help="comma ints (model-layer idx); default 40/55/70% depth")
+    ap.add_argument("--peak-layer", type=int, default=None, help="read propagation here; default auto-best")
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
+    spec = resolve_model(args.models_config, args.model)
+    which = "last" if args.scheme == "readout" else "all"
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(HF[args.model])
-    model = AutoModelForCausalLM.from_pretrained(HF[args.model], dtype=torch.float16,
-                                                 attn_implementation="eager", device_map="cuda:0").eval()
-    layers = model.model.layers
-    n_layers = len(layers)
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"])
+    is_qwen = "qwen" in args.model.lower()
+    model = AutoModelForCausalLM.from_pretrained(
+        spec["hf_id"], dtype=torch.float16, attn_implementation=spec.get("attn_implementation", "eager"),
+        device_map="cuda:0").eval()
+    layers = model.model.layers; n_layers = len(layers)
     alphas = [float(a) for a in args.alphas.split(",")]
     stims = [json.loads(l) for l in open(args.stimuli)]
     rng = np.random.default_rng(0)
 
-    # steering hook state
     state = {"vec": None, "pos": None, "scale": 0.0}
 
     def hook(mod, inp, out):
         if state["vec"] is None or not state["pos"]:
             return out
         h = out[0] if isinstance(out, tuple) else out
-        # only the prompt forward contains these positions; skip KV-cached
-        # single-token generation steps (the steered prompt is already cached)
-        if h.shape[1] <= max(state["pos"]):
+        if h.shape[1] <= max(state["pos"]):   # skip KV-cached single-token gen steps
             return out
         v = torch.tensor(state["vec"], device=h.device, dtype=h.dtype) * state["scale"]
         h[0, state["pos"], :] += v
         return (h,) + out[1:] if isinstance(out, tuple) else h
 
     steer_layers = ([int(x) for x in args.steer_layers.split(",")] if args.steer_layers
-                    else [max(2, int(n_layers * f)) for f in (0.25, 0.4)])
+                    else [max(2, int(n_layers * f)) for f in (0.40, 0.55, 0.70)])
+
+    def chat(text, gen):
+        return tok.apply_chat_template([{"role": "user", "content": text}], tokenize=False,
+                                       add_generation_prompt=gen,
+                                       **({"enable_thinking": False} if is_qwen else {}))
+
     rows = []
     for family in args.families.split(","):
-        # read PROPAGATION at the family's manifold peak (where rank is most
-        # decodable), NOT the last layer (rank is weak there). Steer BELOW it.
-        LP = PEAK[(args.model, family)]
-        _, probe_prop, _ = fit_probe(args.acts, args.model, family, "shuffle", LP)
-        pool = [s for s in stims if s["family"] == family and s["condition"] == "shuffle"]
-        pool = pool[: (2 if args.smoke else args.n_stim)]
+        # peak layer for reading propagation (max rank-decodability at this locus)
+        if args.peak_layer is not None:
+            LP = args.peak_layer
+        else:
+            best = (0, -9)
+            for L in range(1, n_layers, max(1, n_layers // 12)):
+                r = fit_axis(args.acts, args.model, family, args.condition, args.scheme, L)
+                if r and r[3] > best[1]:
+                    best = (L, r[3])
+            LP = best[0]
+        fp = fit_axis(args.acts, args.model, family, args.condition, args.scheme, LP)
+        if fp is None:
+            print(f"{family}: no acts for scheme {args.scheme}"); continue
+        _, decode_peak, _, peak_q = fp
+        print(f"[{family}/{args.scheme}] peak layer L{LP} (fit rho={peak_q:.2f})", flush=True)
+        pool = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
+                and s.get("structure", "total_order") == "total_order"][: (2 if args.smoke else args.n_stim)]
         for Ls in steer_layers:
-            v_along, probe_same, spread = fit_probe(args.acts, args.model, family, "shuffle", Ls)
+            fa = fit_axis(args.acts, args.model, family, args.condition, args.scheme, Ls)
+            if fa is None:
+                continue
+            v_along, _, spread, _ = fa
+            # matched-norm OFF-AXIS: random direction orthogonalised to the rank axis, unit norm.
             v_rand = rng.standard_normal(v_along.shape).astype(np.float32)
-            v_rand /= np.linalg.norm(v_rand)
-            # probe layer L reads hidden_states[L] = output of decoder layer L-1,
-            # so to steer what the probe reads we hook layers[Ls-1].
-            handle = layers[Ls - 1].register_forward_hook(hook)
+            v_rand -= (v_rand @ v_along) * v_along
+            v_rand /= (np.linalg.norm(v_rand) + 1e-9)
+            handle = layers[Ls - 1].register_forward_hook(hook)   # affect hidden_states[Ls]
             for s in pool:
-                N = len(s["latent_order"])
-                target = s["latent_order"][N // 2]       # mid-rank item (can move both ways)
-                true_rank = N // 2 + 1
-                block = tok.apply_chat_template([{"role": "user", "content": s["prompt"]}],
-                    tokenize=False, add_generation_prompt=False,
-                    **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
-                pos = name_token_ids(block, target, tok)
+                N = len(s["latent_order"]); target = s["latent_order"][N // 2]; true_rank = N // 2 + 1
+                block = chat(s["prompt"], gen=False); pos = mention_token_ids(block, target, tok, which)
                 q = (f"{s['prompt']}\n\nCounting from the earliest as position 1, what position is "
                      f"the {target}? Reply with only the number. No explanation.")
-                qtext = tok.apply_chat_template([{"role": "user", "content": q}], tokenize=False,
-                    add_generation_prompt=True,
-                    **({"enable_thinking": False} if "qwen" in args.model.lower() else {}))
-                qpos = name_token_ids(qtext, target, tok)
-                for direction, vec in (("along", v_along), ("random", v_rand)):
+                qtext = chat(q, gen=True); qpos = mention_token_ids(qtext, target, tok, which)
+                if not pos or not qpos:
+                    continue
+                for direction, vec in (("along", v_along), ("offaxis", v_rand)):
                     for a in alphas:
                         enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                         state.update(vec=vec, pos=pos, scale=a * spread)
                         with torch.no_grad():
                             allh = model(**enc, output_hidden_states=True).hidden_states
-                        dec_same = float(probe_same(allh[Ls][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
-                        dec = float(probe_prop(allh[LP][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
+                        dec = float(decode_peak(allh[LP][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
                         encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                         state.update(vec=vec, pos=qpos, scale=a * spread)
                         with torch.no_grad():
                             g = model.generate(**encq, max_new_tokens=8, do_sample=False,
                                                pad_token_id=tok.eos_token_id)
                         ans = tok.decode(g[0, encq["input_ids"].shape[1]:], skip_special_tokens=True)
-                        m = re.search(r"\d{1,3}", ans)
-                        rows.append(dict(model=args.model, family=family, steer_layer=Ls,
-                                         stim=s["stimulus_id"], target=target, true_rank=true_rank,
-                                         direction=direction, alpha=a, decoded_same=round(dec_same, 3),
-                                         decoded_rank=round(dec, 3),
-                                         answered=int(m.group()) if m else None, raw=ans.strip()[:20]))
+                        mm = re.search(r"\d{1,3}", ans)
+                        rows.append(dict(model=args.model, family=family, scheme=args.scheme, steer_layer=Ls,
+                                         peak_layer=LP, stim=s["stimulus_id"], target=target, true_rank=true_rank,
+                                         direction=direction, alpha=a, decoded_rank=round(dec, 3),
+                                         answered=int(mm.group()) if mm else None, raw=ans.strip()[:20]))
                         state.update(vec=None)
             handle.remove()
 
     import pandas as pd
-    pd.DataFrame(rows).to_parquet(args.out)
-    df = pd.DataFrame(rows)
-    print("=== dose-response: same-layer decoded / last-layer decoded / answered rank ===")
-    for (fam, sl, d), g in df.groupby(["family", "steer_layer", "direction"]):
-        line = f"{fam:10s} L{sl:<2d} {d:6s} | "
+    df = pd.DataFrame(rows); df.to_parquet(args.out)
+    print("=== dose-response: propagated decoded rank / answered rank ===")
+    for (fam, sl, d), gdf in df.groupby(["family", "steer_layer", "direction"]):
+        line = f"{fam:8s} {args.scheme:8s} L{sl:<2d} {d:7s} | "
         for a in alphas:
-            ga = g[g.alpha == a]
-            ans = ga["answered"].dropna()
-            line += (f"a{a:+.0f}:same={ga['decoded_same'].mean():.2f},last={ga['decoded_rank'].mean():.2f},"
-                     f"ans={ans.mean():.1f} ")
-        print(line)
-    if args.smoke:
-        print("\n=== smoke raw ===")
-        for r in rows:
-            print(f"  {r['family']:10s} {r['direction']:6s} a{r['alpha']:+.0f} "
-                  f"true={r['true_rank']} dec={r['decoded_rank']:.2f} ans={r['answered']} raw={r['raw']!r}")
-    print(f"\nwrote -> {args.out}")
+            ga = gdf[gdf.alpha == a]; ans = ga["answered"].dropna()
+            line += f"a{a:+.0f}:dec={ga['decoded_rank'].mean():.2f},ans={(ans.mean() if len(ans) else float('nan')):.1f} "
+        print(line, flush=True)
+    print(f"wrote -> {args.out}")
 
 
 if __name__ == "__main__":
