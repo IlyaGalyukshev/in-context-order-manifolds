@@ -175,7 +175,8 @@ def main():
     ap.add_argument("--coherence", action="store_true",
                     help="also decode the coherence-null twins (is_null) and report the real-twin increment")
     ap.add_argument("--bootstrap", type=int, default=0,
-                    help="with --coherence: bootstrap CI on the increment over stimuli (e.g. 2000)")
+                    help="bootstrap CI (over stimuli) on the interior decode and, with --coherence, the increment (e.g. 2000)")
+    ap.add_argument("--seed", type=int, default=0, help="seed for held-out layer split + bootstrap")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
