@@ -123,9 +123,10 @@ def boot_coherence(pr, yr, gr, pt, yt, gt, B, seed=0):
     return [round(float(lo), 3), round(float(hi), 3)], bool(lo > 0)
 
 
-def load_all(acts, model, family, condition, scheme, is_null=False, difficulty="all"):
+def load_all(acts, model, family, condition, scheme, is_null=False, difficulty="all", n_items=None):
     """Every layer at once: X [Σn, L, D], ranks, groups — so per-layer decodes + held-out layer
-    selection reuse one load instead of re-reading npz per layer."""
+    selection reuse one load instead of re-reading npz per layer. n_items filters length (for
+    the signal-vs-N curve) so mixed-N acts are not pooled."""
     Xs, ranks, groups = [], [], []
     for gi, f in enumerate(sorted((Path(acts) / model).glob("*.npz"))):
         z = np.load(f, allow_pickle=False); m = json.loads(str(z["meta"]))
@@ -133,6 +134,8 @@ def load_all(acts, model, family, condition, scheme, is_null=False, difficulty="
         if m["family"] != family or m["condition"] != condition or key is None:
             continue
         if bool(m.get("is_null", False)) != is_null:
+            continue
+        if n_items is not None and int(m.get("n_items", 0)) != int(n_items):
             continue
         if difficulty != "all" and m.get("difficulty") not in (difficulty, None):
             continue
@@ -177,6 +180,7 @@ def main():
     ap.add_argument("--bootstrap", type=int, default=0,
                     help="bootstrap CI (over stimuli) on the interior decode and, with --coherence, the increment (e.g. 2000)")
     ap.add_argument("--seed", type=int, default=0, help="seed for held-out layer split + bootstrap")
+    ap.add_argument("--n-items", type=int, default=None, help="filter to one length N (for the signal-vs-N curve)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -186,7 +190,7 @@ def main():
 
     rows = []
     for model in args.models.split(","):
-        A = load_all(args.acts, model, args.family, args.condition, args.scheme, difficulty=args.difficulty)
+        A = load_all(args.acts, model, args.family, args.condition, args.scheme, difficulty=args.difficulty, n_items=args.n_items)
         if A is None:
             print(f"{model}: no data for {args.family}/{args.condition}/{args.scheme}/{args.difficulty}"); continue
         Xall, ranks, groups = A; n_layers = Xall.shape[1]; N = int(ranks.max())
@@ -225,7 +229,7 @@ def main():
 
         coh = twin_i = None; coh_ci = None; coh_sig = None
         if args.coherence:
-            T = load_all(args.acts, model, args.family, args.condition, args.scheme, is_null=True, difficulty=args.difficulty)
+            T = load_all(args.acts, model, args.family, args.condition, args.scheme, is_null=True, difficulty=args.difficulty, n_items=args.n_items)
             if T is not None:
                 Xt, rt, gt = T; it = (rt >= 3) & (rt <= int(rt.max()) - 2)
                 twin_i, _, _ = probe_with_null(Xt[it][:, L_arg, :], rt[it], gt[it], args.n_perm)
