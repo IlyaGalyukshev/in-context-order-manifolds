@@ -81,7 +81,8 @@ def main() -> None:
             meta=json.dumps({"family": st["family"], "condition": st["condition"],
                              "n_items": st["n_items"], "content_key": st["content_key"],
                              "structure": st.get("structure", "total_order"),
-                             "is_null": bool(st.get("is_null", False)),
+                             # coherence-null twins are tagged 'incoherent' by the generator
+                             "is_null": bool(st.get("is_null", False) or st.get("incoherent", False)),
                              "difficulty": st.get("difficulty"),
                              "n_tokens": rec["n_tokens"], "model": args.model}),
             **rec["pooled"], **extra,
