@@ -92,6 +92,37 @@ def probe_with_null(X, ranks, groups, n_perm, pca=64, seed=0):
     return real, float(np.percentile(null, 95)), p
 
 
+def oof_pred(X, ranks, groups, pca=64):
+    """OOF ridge predictions per entity (for bootstrapping the Spearman over stimuli)."""
+    y = (ranks - ranks.min()) / (ranks.max() - ranks.min())
+    Xr = PCA(min(pca, X.shape[0] - 1), random_state=0).fit_transform(StandardScaler().fit_transform(X))
+    o = np.full(len(y), np.nan)
+    k = min(5, len(np.unique(groups)))
+    for tr, te in GroupKFold(k).split(Xr, y, groups):
+        o[te] = Ridge(alpha=10.).fit(Xr[tr], y[tr]).predict(Xr[te])
+    return o, y
+
+
+def boot_coherence(pr, yr, gr, pt, yt, gt, B, seed=0):
+    """Bootstrap CI on the coherence increment (real interior |Spearman| − twin interior |Spearman|),
+    resampling stimuli independently in each pool (twins are separate stimuli)."""
+    rng = np.random.default_rng(seed)
+    ur = {u: np.where(gr == u)[0] for u in np.unique(gr)}
+    ut = {u: np.where(gt == u)[0] for u in np.unique(gt)}
+    kr, kt = list(ur), list(ut)
+
+    def sp(p, y, idx):
+        r = spearmanr(p[idx], y[idx])[0]
+        return abs(r) if r == r else 0.0
+    vals = []
+    for _ in range(B):
+        ri = np.concatenate([ur[kr[j]] for j in rng.integers(0, len(kr), len(kr))])
+        ti = np.concatenate([ut[kt[j]] for j in rng.integers(0, len(kt), len(kt))])
+        vals.append(sp(pr, yr, ri) - sp(pt, yt, ti))
+    lo, hi = np.percentile(vals, 2.5), np.percentile(vals, 97.5)
+    return [round(float(lo), 3), round(float(hi), 3)], bool(lo > 0)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--acts", required=True)
@@ -105,6 +136,8 @@ def main():
                     help="filter stimuli by difficulty label (from meta)")
     ap.add_argument("--coherence", action="store_true",
                     help="also decode the coherence-null twins (is_null) and report the real-twin increment")
+    ap.add_argument("--bootstrap", type=int, default=0,
+                    help="with --coherence: bootstrap CI on the increment over stimuli (e.g. 2000)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -146,22 +179,29 @@ def main():
         ri, ni, pi = probe_with_null(X[interior], ranks[interior], groups[interior], args.n_perm)
         # coherence increment (real interior - twin interior at the SAME layer): the load-bearing
         # BCS metric — a coherent order should decode ABOVE its incoherent-cycle twin (local chaining).
-        coh = twin_i = None
+        coh = twin_i = None; coh_ci = None; coh_sig = None
         if args.coherence:
             T = ld(model, L, is_null=True)
             if T is not None:
                 Xt, rt, gt = T; it = (rt >= 3) & (rt <= int(rt.max()) - 2)
                 twin_i, _, _ = probe_with_null(Xt[it], rt[it], gt[it], args.n_perm)
                 coh = ri - twin_i
+                if args.bootstrap:
+                    pr, yr = oof_pred(X[interior], ranks[interior], groups[interior])
+                    pt, yt = oof_pred(Xt[it], rt[it], gt[it])
+                    coh_ci, coh_sig = boot_coherence(pr, yr, groups[interior], pt, yt, gt[it], args.bootstrap)
         rows.append(dict(model=model, family=args.family, condition=args.condition,
                          scheme=args.scheme, difficulty=args.difficulty, layer=L, N=N,
                          all_probe=round(ra, 3), all_null95=round(na, 3), all_p=round(pa, 4),
                          interior_probe=round(ri, 3), interior_null95=round(ni, 3), interior_p=round(pi, 4),
                          twin_interior=round(twin_i, 3) if twin_i is not None else None,
                          coherence_increment=round(coh, 3) if coh is not None else None,
+                         coherence_ci=coh_ci, coherence_sig=coh_sig,
                          interior_n_per_stim=int(interior.sum() // len(np.unique(groups)))))
         verdict = "SURVIVES" if (ri > ni and pi < 0.05) else "COLLAPSES (endpoint artifact)"
         cohs = f" COH(real-twin)={coh:+.3f}" if coh is not None else ""
+        if coh_ci is not None:
+            cohs += f" CI{coh_ci}{'SIG' if coh_sig else 'ns'}"
         print(f"{model:14s} {args.family}/{args.condition} {args.scheme} diff={args.difficulty} L{L} N={N} | "
               f"ALL={ra:.2f}(p={pa:.3f}) INTERIOR={ri:.2f}(null95={ni:.2f},p={pi:.3f}){cohs} -> {verdict}", flush=True)
 
