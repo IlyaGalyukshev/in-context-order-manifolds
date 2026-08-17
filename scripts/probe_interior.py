@@ -123,6 +123,44 @@ def boot_coherence(pr, yr, gr, pt, yt, gt, B, seed=0):
     return [round(float(lo), 3), round(float(hi), 3)], bool(lo > 0)
 
 
+def load_all(acts, model, family, condition, scheme, is_null=False, difficulty="all"):
+    """Every layer at once: X [Σn, L, D], ranks, groups — so per-layer decodes + held-out layer
+    selection reuse one load instead of re-reading npz per layer."""
+    Xs, ranks, groups = [], [], []
+    for gi, f in enumerate(sorted((Path(acts) / model).glob("*.npz"))):
+        z = np.load(f, allow_pickle=False); m = json.loads(str(z["meta"]))
+        key = scheme_key(z, scheme)
+        if m["family"] != family or m["condition"] != condition or key is None:
+            continue
+        if bool(m.get("is_null", False)) != is_null:
+            continue
+        if difficulty != "all" and m.get("difficulty") not in (difficulty, None):
+            continue
+        Xs.append(z[key].astype(np.float32)); ranks.append(z["ranks"]); groups.append(np.full(len(z["ranks"]), gi))
+    if not Xs:
+        return None
+    return np.concatenate(Xs, 0), np.concatenate(ranks), np.concatenate(groups)
+
+
+def _reduce(X, pca=64):
+    return PCA(min(pca, X.shape[0] - 1), random_state=0).fit_transform(StandardScaler().fit_transform(X))
+
+
+def _ynorm(ranks):
+    return (ranks - ranks.min()) / (ranks.max() - ranks.min() + 1e-9)
+
+
+def boot_spearman_ci(pred, y, groups, B, seed=0):
+    """Bootstrap CI on |Spearman| by resampling stimuli (groups) over fixed OOF predictions."""
+    rng = np.random.default_rng(seed)
+    idx = {u: np.where(groups == u)[0] for u in np.unique(groups)}; ks = list(idx)
+    vals = []
+    for _ in range(B):
+        sel = np.concatenate([idx[ks[j]] for j in rng.integers(0, len(ks), len(ks))])
+        r = spearmanr(pred[sel], y[sel])[0]; vals.append(abs(r) if r == r else 0.0)
+    return [round(float(np.percentile(vals, 2.5)), 3), round(float(np.percentile(vals, 97.5)), 3)]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--acts", required=True)
@@ -147,63 +185,70 @@ def main():
 
     rows = []
     for model in args.models.split(","):
-        probe0 = ld(model, 0)
-        if probe0 is None:
-            print(f"{model}: no data for {args.family}/{args.condition}/{args.scheme}/{args.difficulty}")
-            continue
-        n_layers = None
-        for gi, f in enumerate(sorted((Path(args.acts) / model).glob("*.npz"))):
-            z = np.load(f, allow_pickle=False)
-            k = scheme_key(z, args.scheme)
-            if k is not None:
-                n_layers = z[k].shape[1]; break
-        layers = [args.layer] if args.layer is not None else range(n_layers)
-        best = None
-        for L in layers:
-            X, ranks, groups = ld(model, L)
-            N = int(ranks.max())
-            interior = (ranks >= 3) & (ranks <= N - 2)
-            allr = cv_spearman(
-                PCA(min(64, X.shape[0] - 1), random_state=0).fit_transform(StandardScaler().fit_transform(X)),
-                (ranks - ranks.min()) / (ranks.max() - ranks.min()), groups)
-            # skip nan layers (e.g. an embedding-layer degenerate locus) so a nan at L0 does not
-            # stick — nan > x is always False and would freeze best on the first layer.
-            if allr == allr and (best is None or allr > best[1]):
-                best = (L, allr, X, ranks, groups, interior, N)
-        if best is None:  # every layer degenerate -> fall back to a mid layer
-            Lm = n_layers // 2; X, ranks, groups = ld(model, Lm)
-            interior = (ranks >= 3) & (ranks <= int(ranks.max()) - 2)
-            best = (Lm, float("nan"), X, ranks, groups, interior, int(ranks.max()))
-        L, _, X, ranks, groups, interior, N = best
-        ra, na, pa = probe_with_null(X, ranks, groups, args.n_perm)
-        ri, ni, pi = probe_with_null(X[interior], ranks[interior], groups[interior], args.n_perm)
-        # coherence increment (real interior - twin interior at the SAME layer): the load-bearing
-        # BCS metric — a coherent order should decode ABOVE its incoherent-cycle twin (local chaining).
+        A = load_all(args.acts, model, args.family, args.condition, args.scheme, difficulty=args.difficulty)
+        if A is None:
+            print(f"{model}: no data for {args.family}/{args.condition}/{args.scheme}/{args.difficulty}"); continue
+        Xall, ranks, groups = A; n_layers = Xall.shape[1]; N = int(ranks.max())
+        interior = (ranks >= 3) & (ranks <= N - 2)
+        ug = np.unique(groups); n_stim = len(ug)
+        Xi, yi, gi_ = Xall[interior], _ynorm(ranks[interior]), groups[interior]
+
+        def dec_at(L, gsub=None):
+            m = np.ones(len(yi), bool) if gsub is None else np.isin(gi_, gsub)
+            if m.sum() < 5 or len(np.unique(yi[m])) < 3:
+                return float("nan")
+            return cv_spearman(_reduce(Xi[m, L, :]), yi[m], gi_[m])
+
+        layers = [args.layer] if args.layer is not None else list(range(n_layers))
+        full = np.array([dec_at(L) for L in layers])
+        L_arg = layers[int(np.nanargmax(full))]; ri_arg = float(np.nanmax(full))   # OPTIMISTIC (argmax on all data)
+
+        # HELD-OUT layer selection (leak-free MAIN number): choose the layer on half the stimuli,
+        # decode the OTHER half at it; swap; average. Removes the layer-selection leak that argmax has.
+        if args.layer is None and n_stim >= 8:
+            perm = np.random.default_rng(args.seed).permutation(ug)
+            gA, gB = perm[:n_stim // 2], perm[n_stim // 2:]
+            LA = layers[int(np.nanargmax([dec_at(L, gA) for L in layers]))]
+            LB = layers[int(np.nanargmax([dec_at(L, gB) for L in layers]))]
+            ri_ho = float(np.nanmean([dec_at(LA, gB), dec_at(LB, gA)]))
+        else:
+            ri_ho = ri_arg
+
+        # characterisation at the argmax layer: perm null + bootstrap CI + n
+        ri, ni, pi = probe_with_null(Xi[:, L_arg, :], ranks[interior], gi_, args.n_perm)
+        ra, na, pa = probe_with_null(Xall[:, L_arg, :], ranks, groups, args.n_perm)
+        ri_ci = None
+        if args.bootstrap:
+            pr, yr = oof_pred(Xi[:, L_arg, :], ranks[interior], gi_)
+            ri_ci = boot_spearman_ci(pr, yr, gi_, args.bootstrap, args.seed)
+
         coh = twin_i = None; coh_ci = None; coh_sig = None
         if args.coherence:
-            T = ld(model, L, is_null=True)
+            T = load_all(args.acts, model, args.family, args.condition, args.scheme, is_null=True, difficulty=args.difficulty)
             if T is not None:
                 Xt, rt, gt = T; it = (rt >= 3) & (rt <= int(rt.max()) - 2)
-                twin_i, _, _ = probe_with_null(Xt[it], rt[it], gt[it], args.n_perm)
+                twin_i, _, _ = probe_with_null(Xt[it][:, L_arg, :], rt[it], gt[it], args.n_perm)
                 coh = ri - twin_i
                 if args.bootstrap:
-                    pr, yr = oof_pred(X[interior], ranks[interior], groups[interior])
-                    pt, yt = oof_pred(Xt[it], rt[it], gt[it])
-                    coh_ci, coh_sig = boot_coherence(pr, yr, groups[interior], pt, yt, gt[it], args.bootstrap)
-        rows.append(dict(model=model, family=args.family, condition=args.condition,
-                         scheme=args.scheme, difficulty=args.difficulty, layer=L, N=N,
-                         all_probe=round(ra, 3), all_null95=round(na, 3), all_p=round(pa, 4),
-                         interior_probe=round(ri, 3), interior_null95=round(ni, 3), interior_p=round(pi, 4),
+                    prc, yrc = oof_pred(Xi[:, L_arg, :], ranks[interior], gi_)
+                    pt, yt = oof_pred(Xt[it][:, L_arg, :], rt[it], gt[it])
+                    coh_ci, coh_sig = boot_coherence(prc, yrc, gi_, pt, yt, gt[it], args.bootstrap)
+
+        rows.append(dict(model=model, family=args.family, condition=args.condition, scheme=args.scheme,
+                         difficulty=args.difficulty, layer_argmax=L_arg, N=N, n_stim=n_stim,
+                         interior_heldout=round(ri_ho, 3), interior_argmax=round(ri_arg, 3),
+                         interior_ci=ri_ci, interior_null95=round(ni, 3), interior_p=round(pi, 4),
+                         all_probe=round(ra, 3), all_p=round(pa, 4),
                          twin_interior=round(twin_i, 3) if twin_i is not None else None,
                          coherence_increment=round(coh, 3) if coh is not None else None,
-                         coherence_ci=coh_ci, coherence_sig=coh_sig,
-                         interior_n_per_stim=int(interior.sum() // len(np.unique(groups)))))
-        verdict = "SURVIVES" if (ri > ni and pi < 0.05) else "COLLAPSES (endpoint artifact)"
-        cohs = f" COH(real-twin)={coh:+.3f}" if coh is not None else ""
-        if coh_ci is not None:
-            cohs += f" CI{coh_ci}{'SIG' if coh_sig else 'ns'}"
-        print(f"{model:14s} {args.family}/{args.condition} {args.scheme} diff={args.difficulty} L{L} N={N} | "
-              f"ALL={ra:.2f}(p={pa:.3f}) INTERIOR={ri:.2f}(null95={ni:.2f},p={pi:.3f}){cohs} -> {verdict}", flush=True)
+                         coherence_ci=coh_ci, coherence_sig=coh_sig))
+        verdict = "SURVIVES" if (ri > ni and pi < 0.05) else "COLLAPSES"
+        cis = f"CI{ri_ci}" if ri_ci else ""
+        cohs = (f" COH={coh:+.3f}{('CI'+str(coh_ci)+('SIG' if coh_sig else 'ns')) if coh_ci else ''}"
+                if coh is not None else "")
+        print(f"{model:14s} {args.family}/{args.condition} {args.scheme} diff={args.difficulty} | n={n_stim} "
+              f"INTERIOR heldout={ri_ho:.3f} argmax={ri_arg:.3f}@L{L_arg} {cis} (null95={ni:.2f},p={pi:.3f}){cohs} -> {verdict}",
+              flush=True)
 
     if args.out:
         import pandas as pd
