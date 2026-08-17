@@ -42,6 +42,24 @@ def resolve_model(models_config, name):
     return roster[name]
 
 
+def get_decoder_layers(model):
+    """The decoder-layer ModuleList, robust across architectures (Gemma-4 unified/multimodal
+    nests it under .language_model; Qwen/OLMo expose model.model.layers)."""
+    for path in ("model.layers", "model.language_model.layers", "language_model.model.layers",
+                 "model.model.language_model.layers", "model.model.layers"):
+        obj = model; ok = True
+        for p in path.split("."):
+            if not hasattr(obj, p):
+                ok = False; break
+            obj = getattr(obj, p)
+        if ok and isinstance(obj, torch.nn.ModuleList):
+            return obj
+    for _, mod in model.named_modules():   # fallback: the deepest big ModuleList of blocks
+        if isinstance(mod, torch.nn.ModuleList) and len(mod) > 8:
+            return mod
+    raise RuntimeError("could not locate decoder layers")
+
+
 def mention_token_ids(prompt, entity, tok, which="all"):
     """token indices of 'The <entity>' mentions. which='all' (name locus, every mention) or
     'last' (readout locus, the roster mention after all cards)."""
@@ -105,7 +123,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation=spec.get("attn_implementation", "eager"),
         device_map="cuda:0").eval()
-    layers = model.model.layers; n_layers = len(layers)
+    layers = get_decoder_layers(model); n_layers = len(layers)
     alphas = [float(a) for a in args.alphas.split(",")]
     stims = [json.loads(l) for l in open(args.stimuli)]
     rng = np.random.default_rng(0)
