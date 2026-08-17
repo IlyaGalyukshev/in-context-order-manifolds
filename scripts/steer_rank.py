@@ -112,6 +112,11 @@ def main():
     ap.add_argument("--alphas", default="-8,-4,-2,0,2,4,8")
     ap.add_argument("--steer-layers", default="", help="comma ints (model-layer idx); default 40/55/70% depth")
     ap.add_argument("--peak-layer", type=int, default=None, help="read propagation here; default auto-best")
+    ap.add_argument("--n-offaxis", type=int, default=1,
+                    help="number of matched-norm off-axis controls (null distribution of the "
+                         "off-axis effect; the along-axis effect is read against this null + a "
+                         "bootstrap CI on the along-minus-offaxis slope).")
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
@@ -126,7 +131,7 @@ def main():
     layers = get_decoder_layers(model); n_layers = len(layers)
     alphas = [float(a) for a in args.alphas.split(",")]
     stims = [json.loads(l) for l in open(args.stimuli)]
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(args.seed)
 
     state = {"vec": None, "pos": None, "scale": 0.0}
 
@@ -172,10 +177,16 @@ def main():
             if fa is None:
                 continue
             v_along, _, spread, _ = fa
-            # matched-norm OFF-AXIS: random direction orthogonalised to the rank axis, unit norm.
-            v_rand = rng.standard_normal(v_along.shape).astype(np.float32)
-            v_rand -= (v_rand @ v_along) * v_along
-            v_rand /= (np.linalg.norm(v_rand) + 1e-9)
+            # matched-norm OFF-AXIS null: n_offaxis random directions each orthogonalised to the
+            # rank axis, unit norm. The off-axis effect distribution IS the null the along-axis
+            # effect is judged against (one direction was confirmation-bias-prone).
+            offdirs = []
+            for _k in range(max(1, args.n_offaxis)):
+                vr = rng.standard_normal(v_along.shape).astype(np.float32)
+                vr -= (vr @ v_along) * v_along
+                vr /= (np.linalg.norm(vr) + 1e-9)
+                offdirs.append(vr)
+            directions = [("along", v_along)] + [(f"offaxis{_k}", vr) for _k, vr in enumerate(offdirs)]
             handle = layers[Ls - 1].register_forward_hook(hook)   # affect hidden_states[Ls]
             for s in pool:
                 N = len(s["latent_order"]); target = s["latent_order"][N // 2]; true_rank = N // 2 + 1
@@ -185,7 +196,7 @@ def main():
                 qtext = chat(q, gen=True); qpos = mention_token_ids(qtext, target, tok, which)
                 if not pos or not qpos:
                     continue
-                for direction, vec in (("along", v_along), ("offaxis", v_rand)):
+                for direction, vec in directions:
                     for a in alphas:
                         enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                         state.update(vec=vec, pos=pos, scale=a * spread)
@@ -208,13 +219,33 @@ def main():
 
     import pandas as pd
     df = pd.DataFrame(rows); df.to_parquet(args.out)
-    print("=== dose-response: propagated decoded rank / answered rank ===")
-    for (fam, sl, d), gdf in df.groupby(["family", "steer_layer", "direction"]):
+    # collapse offaxis0/1/2.. -> a single "offaxis" null band for the human summary; the parquet
+    # keeps every direction so the gather step can build the null distribution + CI.
+    df["dir_base"] = df["direction"].str.replace(r"\d+$", "", regex=True)
+    print("=== dose-response: propagated decoded rank / answered rank "
+          f"(offaxis = mean over {max(1, args.n_offaxis)} matched-norm controls) ===")
+    for (fam, sl, d), gdf in df.groupby(["family", "steer_layer", "dir_base"]):
         line = f"{fam:8s} {args.scheme:8s} L{sl:<2d} {d:7s} | "
         for a in alphas:
             ga = gdf[gdf.alpha == a]; ans = ga["answered"].dropna()
             line += f"a{a:+.0f}:dec={ga['decoded_rank'].mean():.2f},ans={(ans.mean() if len(ans) else float('nan')):.1f} "
         print(line, flush=True)
+    # along-vs-null: answered-rank slope (rank per unit alpha) for along vs each off-axis dir.
+    def _slope(gdf):
+        g = gdf.dropna(subset=["answered"])
+        if g["alpha"].nunique() < 2 or len(g) < 3:
+            return float("nan")
+        return float(np.polyfit(g["alpha"].to_numpy(float), g["answered"].to_numpy(float), 1)[0])
+    print("=== answered-rank slope: along vs off-axis null (per steer layer) ===")
+    for (fam, sl), gdf in df.groupby(["family", "steer_layer"]):
+        al = _slope(gdf[gdf.direction == "along"])
+        offs = [_slope(gdf[gdf.direction == dd]) for dd in sorted(gdf.direction.unique()) if dd.startswith("offaxis")]
+        offs = [o for o in offs if o == o]
+        if offs:
+            om, osd = float(np.mean(offs)), float(np.std(offs))
+            hi = (1 + sum(abs(o) >= abs(al) for o in offs)) / (1 + len(offs))  # |off| >= |along| rate
+            print(f"{fam:8s} {args.scheme:8s} L{sl:<2d} | along_slope={al:+.3f}  "
+                  f"offaxis_null={om:+.3f}±{osd:.3f} (n={len(offs)})  p(|off|>=|along|)={hi:.3f}", flush=True)
     print(f"wrote -> {args.out}")
 
 

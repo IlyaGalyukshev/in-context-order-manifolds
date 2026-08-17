@@ -24,12 +24,16 @@ def _scheme_key(z, scheme):
     return None
 
 
-def load_records(acts, model, family, condition, scheme, N=None, structure=None, is_null=False):
+def load_records(acts, model, family, condition, scheme, N=None, structure=None, is_null=False,
+                 with_extras=False):
     """List of {X:[N,L,D] float32, ranks:[N] int, N:int, content_key:str}.
     `structure` (e.g. 'total_order', 'cyclic', 'grid2d', 'partial_order') filters on
     meta.structure so cyclic and total-order cells are not mixed. `is_null` selects the
     coherence-null twins (when real + null share one acts dir). Reads canonical or the
-    legacy 'loc_<scheme>' array layout."""
+    legacy 'loc_<scheme>' array layout. `with_extras` additionally attaches the structure
+    coordinates written by extract_activations (coord_x/coord_y for grids, cyclic_pos for
+    rings, within_rank/chain_of for partial orders) when present — ordered to match `ranks`
+    — so the form litmus can read them alongside the activations."""
     recs = []
     for f in sorted((Path(acts) / model).glob("*.npz")):
         z = np.load(f, allow_pickle=False)
@@ -43,8 +47,13 @@ def load_records(acts, model, family, condition, scheme, N=None, structure=None,
             continue
         if structure is not None and m.get("structure", "total_order") != structure:
             continue
-        recs.append({"X": z[key].astype(np.float32), "ranks": z["ranks"].astype(int),
-                     "N": int(m["n_items"]), "content_key": m["content_key"]})
+        rec = {"X": z[key].astype(np.float32), "ranks": z["ranks"].astype(int),
+               "N": int(m["n_items"]), "content_key": m["content_key"]}
+        if with_extras:
+            for fld in ("coord_x", "coord_y", "cyclic_pos", "within_rank", "chain_of"):
+                if fld in z.files:
+                    rec[fld] = z[fld].astype(float)
+        recs.append(rec)
     return recs
 
 
