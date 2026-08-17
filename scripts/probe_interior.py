@@ -40,20 +40,32 @@ def cv_spearman(Xr, y, g, alpha=10.0):
     return abs(spearmanr(oob, y)[0])
 
 
+def scheme_key(z, scheme):
+    """Resolve the pooling-scheme array key: canonical 'name'/'readout'/... (extract_activations)
+    or the legacy 'loc_<scheme>' layout. Returns None if absent."""
+    if scheme in z.files:
+        return scheme
+    if ("loc_" + scheme) in z.files:
+        return "loc_" + scheme
+    return None
+
+
 def load(acts, model, family, condition, layer, scheme, is_null=False, difficulty="all"):
     """is_null selects the coherence-null twins; difficulty in {all,easy,hard} filters by the
-    stored difficulty label. Backward-compatible with older acts whose meta lacks is_null."""
+    stored difficulty label. Backward-compatible with older acts whose meta lacks is_null and
+    whose scheme arrays use the 'loc_' prefix."""
     Xs, ranks, groups = [], [], []
     for gi, f in enumerate(sorted((Path(acts) / model).glob("*.npz"))):
         z = np.load(f, allow_pickle=False)
         m = json.loads(str(z["meta"]))
-        if m["family"] != family or m["condition"] != condition or scheme not in z.files:
+        key = scheme_key(z, scheme)
+        if m["family"] != family or m["condition"] != condition or key is None:
             continue
         if bool(m.get("is_null", False)) != is_null:
             continue
         if difficulty != "all" and m.get("difficulty") not in (difficulty, None):
             continue
-        Xs.append(z[scheme][:, layer, :].astype(np.float32))
+        Xs.append(z[key][:, layer, :].astype(np.float32))
         ranks.append(z["ranks"])
         groups.append(np.full(len(z["ranks"]), gi))
     if not Xs:
@@ -109,8 +121,9 @@ def main():
         n_layers = None
         for gi, f in enumerate(sorted((Path(args.acts) / model).glob("*.npz"))):
             z = np.load(f, allow_pickle=False)
-            if args.scheme in z.files:
-                n_layers = z[args.scheme].shape[1]; break
+            k = scheme_key(z, args.scheme)
+            if k is not None:
+                n_layers = z[k].shape[1]; break
         layers = [args.layer] if args.layer is not None else range(n_layers)
         best = None
         for L in layers:
