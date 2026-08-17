@@ -133,8 +133,14 @@ def main():
             allr = cv_spearman(
                 PCA(min(64, X.shape[0] - 1), random_state=0).fit_transform(StandardScaler().fit_transform(X)),
                 (ranks - ranks.min()) / (ranks.max() - ranks.min()), groups)
-            if best is None or allr > best[1]:
+            # skip nan layers (e.g. an embedding-layer degenerate locus) so a nan at L0 does not
+            # stick — nan > x is always False and would freeze best on the first layer.
+            if allr == allr and (best is None or allr > best[1]):
                 best = (L, allr, X, ranks, groups, interior, N)
+        if best is None:  # every layer degenerate -> fall back to a mid layer
+            Lm = n_layers // 2; X, ranks, groups = ld(model, Lm)
+            interior = (ranks >= 3) & (ranks <= int(ranks.max()) - 2)
+            best = (Lm, float("nan"), X, ranks, groups, interior, int(ranks.max()))
         L, _, X, ranks, groups, interior, N = best
         ra, na, pa = probe_with_null(X, ranks, groups, args.n_perm)
         ri, ni, pi = probe_with_null(X[interior], ranks[interior], groups[interior], args.n_perm)
