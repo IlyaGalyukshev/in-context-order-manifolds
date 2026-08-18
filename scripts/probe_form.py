@@ -205,18 +205,27 @@ def run_cell(acts, model, family, condition, scheme, structure, n_boot, n_perm, 
     fmax = np.array([v for v in null_max if v == v])
     p_fwer = (1 + int((fmax >= scores[peak]).sum())) / (1 + len(fmax)) if len(fmax) else None
 
-    # ---- bootstrap CI over stimuli at the peak layer (resample records, recompute peak data) ----
-    idx0 = np.arange(len(recs))
+    # ---- bootstrap CI over stimuli at the peak layer. Resample the PRECOMPUTED peak-layer data
+    # (rows/stimuli) with replacement -> no per-draw re-PCA / re-projection; only the cheap decode
+    # (grid) or the per-stimulus RSA (cyclic) is recomputed. Groups get fresh ids per draw. ----
     boot = {k: [] for k in peak_m}
-    for _ in range(n_boot):
-        rb = [recs[i] for i in rng.choice(idx0, size=len(idx0), replace=True)]
-        if structure == "grid2d":
-            d = _grid_layer_data(rb, peak)
-            mb = _grid_full_metrics(*d) if d else None
-        else:
-            d = _cyclic_layer_data(rb, peak)
-            mb = _cyclic_metrics(d) if d else None
-        if mb:
+    if structure == "grid2d":
+        X, Xr, cx, cy, g = per[peak]
+        groups = np.unique(g)
+        for _ in range(n_boot):
+            parts, newg = [], []
+            for ng, gg in enumerate(rng.choice(groups, size=len(groups), replace=True)):
+                idx = np.where(g == gg)[0]
+                parts.append(idx); newg.append(np.full(len(idx), ng))
+            ii = np.concatenate(parts); g2 = np.concatenate(newg)
+            mb = _grid_full_metrics(X[ii], Xr[ii], cx[ii], cy[ii], g2)
+            for k in boot:
+                boot[k].append(mb[k])
+    else:
+        data = per[peak]
+        for _ in range(n_boot):
+            rb = [data[i] for i in rng.choice(len(data), size=len(data), replace=True)]
+            mb = _cyclic_metrics(rb)
             for k in boot:
                 boot[k].append(mb[k])
     ci = {k: _boot_ci(v) for k, v in boot.items()}
