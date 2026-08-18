@@ -107,7 +107,7 @@ def _cyclic_metrics(recs, layer):
         m = interior_mask(r["ranks"], r["N"]) & np.isfinite(r["X"][:, layer, :]).all(axis=1)
         if m.sum() < 4:
             continue
-        P = project(r["X"][m, layer, :], k=2)
+        P = project(r["X"][m, layer, :], dim=2)
         ang.append(angular_decode(P, r["ranks"][m], r["N"]))
     return dict(cyclic_rsa=rr["cyclic_rsa"], linear_rsa=rr["linear_rsa"],
                 ring_gap=float(rr["cyclic_rsa"] - rr["linear_rsa"]),
