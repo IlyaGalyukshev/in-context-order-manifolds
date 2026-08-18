@@ -13,8 +13,10 @@ Two structures, each judged by NUMBERS + bootstrap CI vs a within-stimulus permu
            (angular_decode > null) => a RING; else an arc / line.
 
 Per-layer sweep -> peak (max-over-layers permutation null = family-wise correction for the layer
-search); bootstrap CI over stimuli on the peak-layer metrics. One parameterized tool, same acts /
-conventions as the other probes.
+search); bootstrap CI over stimuli on the peak-layer metrics. Efficient: the expensive per-layer
+reductions (PCA embedding / 2-D projections / pairwise distances) are INVARIANT to the label
+permutation, so they are computed ONCE per layer and the null/bootstrap only re-score the cheap
+decodes. Same acts / conventions as the other probes.
 
   python scripts/probe_form.py --acts acts --model gemma-4-12b-it --family s0_zib \
       --structure grid2d --condition shuffle --scheme readout --n-boot 1000 --n-perm 200 \
@@ -27,12 +29,12 @@ import json
 from pathlib import Path
 
 import numpy as np
+from scipy.spatial.distance import pdist
 from scipy.stats import spearmanr
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 
-from icom.probes import (circular_rsa, angular_decode, cv_spearman, interior_mask,
-                         load_records, n_layers, project, reduce)
+from icom.probes import cv_spearman, interior_mask, load_records, n_layers, project, reduce
 
 
 # ----------------------------------------------------------------------------- grid2d
@@ -44,9 +46,9 @@ def _fit_axis(X, c):
     return w / (np.linalg.norm(w) + 1e-9)
 
 
-def _stack_grid(recs, layer):
-    """Interior entities pooled across stimuli at `layer`: X[n,D], cx[n], cy[n] (each coord
-    z-scored per stimulus so mixed content pools comparably), g[n] stimulus id."""
+def _grid_layer_data(recs, layer):
+    """Interior entities pooled across stimuli at `layer`, with the PCA embedding precomputed once
+    (invariant to label permutation). Returns (X[n,D], Xr[n,k], cx[n], cy[n], g[n]) or None."""
     Xs, cxs, cys, gs = [], [], [], []
     for gi, r in enumerate(recs):
         if "coord_x" not in r or "coord_y" not in r:
@@ -63,68 +65,79 @@ def _stack_grid(recs, layer):
         gs.append(np.full(int(m.sum()), gi))
     if not Xs:
         return None
-    return (np.concatenate(Xs), np.concatenate(cxs), np.concatenate(cys), np.concatenate(gs))
+    X = np.concatenate(Xs)
+    return X, reduce(X), np.concatenate(cxs), np.concatenate(cys), np.concatenate(gs)
 
 
-def _grid_metrics(S):
-    X, cx, cy, g = S
-    Xr = reduce(X)
-    dx, dy = cv_spearman(Xr, cx, g), cv_spearman(Xr, cy, g)
+def _grid_decode(Xr, cx, cy, g):
+    return float(cv_spearman(Xr, cx, g)), float(cv_spearman(Xr, cy, g))
+
+
+def _grid_full_metrics(X, Xr, cx, cy, g):
+    dx, dy = _grid_decode(Xr, cx, cy, g)
     wx, wy = _fit_axis(X, cx), _fit_axis(X, cy)
     px, py = X @ wx, X @ wy
-    # cross-decode computed WITHIN stimulus then averaged (factored grid => ~0)
     cxx, cyy = [], []
-    for gg in np.unique(g):
+    for gg in np.unique(g):                                # cross-decode WITHIN stimulus, averaged
         idx = g == gg
         if idx.sum() >= 4 and np.std(px[idx]) > 0 and np.std(cy[idx]) > 0:
             cxx.append(abs(spearmanr(px[idx], cy[idx])[0]))
         if idx.sum() >= 4 and np.std(py[idx]) > 0 and np.std(cx[idx]) > 0:
             cyy.append(abs(spearmanr(py[idx], cx[idx])[0]))
     cross = float(np.nanmean(cxx + cyy)) if (cxx or cyy) else float("nan")
-    return dict(decode_x=float(dx), decode_y=float(dy), axis_cos=float(abs(wx @ wy)), cross=cross)
+    return dict(decode_x=dx, decode_y=dy, axis_cos=float(abs(wx @ wy)), cross=cross)
 
 
-def _grid_score(mrec):  # headline scalar the layer search maximizes: both axes decode
-    return 0.5 * (mrec["decode_x"] + mrec["decode_y"])
-
-
-def _grid_null_once(S, rng):
-    X, cx, cy, g = S
+def _perm_within(cx, cy, g, rng):
     cxp, cyp = cx.copy(), cy.copy()
     for gg in np.unique(g):                                # joint (cx,cy) permutation within stimulus
         idx = np.where(g == gg)[0]
         p = rng.permutation(len(idx))
         cxp[idx], cyp[idx] = cx[idx][p], cy[idx][p]
-    return _grid_metrics((X, cxp, cyp, g))
+    return cxp, cyp
 
 
 # ----------------------------------------------------------------------------- cyclic
-def _cyclic_metrics(recs, layer):
-    rr = circular_rsa(recs, layer, interior_only=True)
-    # angular decode on the 2-D PCA projection, per stimulus, averaged
-    ang = []
+def _cyclic_layer_data(recs, layer):
+    """Per-stimulus interior data at `layer` with the pairwise distances + 2-D projection
+    precomputed (both invariant to ring-position permutation). Returns a list of
+    {actd, P, ranks, N} or None."""
+    out = []
     for r in recs:
         m = interior_mask(r["ranks"], r["N"]) & np.isfinite(r["X"][:, layer, :]).all(axis=1)
         if m.sum() < 4:
             continue
-        P = project(r["X"][m, layer, :], dim=2)
-        ang.append(angular_decode(P, r["ranks"][m], r["N"]))
-    return dict(cyclic_rsa=rr["cyclic_rsa"], linear_rsa=rr["linear_rsa"],
-                ring_gap=float(rr["cyclic_rsa"] - rr["linear_rsa"]),
-                angular=float(np.nanmean(ang)) if ang else float("nan"), n=rr["n"])
+        X = r["X"][m, layer, :].astype(np.float64)
+        out.append({"actd": pdist(X), "P": project(X, dim=2),
+                    "ranks": r["ranks"][m].astype(int), "N": int(r["N"])})
+    return out or None
 
 
-def _cyclic_score(mrec):
-    return mrec["ring_gap"]
+def _R(x):
+    return abs(np.mean(np.exp(1j * x)))
 
 
-def _cyclic_null_once(recs, layer, rng):
-    shuffled = []
-    for r in recs:
-        rr = dict(r)
-        rr["ranks"] = rng.permutation(r["ranks"])          # ring position <-> entity broken
-        shuffled.append(rr)
-    return _cyclic_metrics(shuffled, layer)
+def _cyclic_metrics(data, ranks_list=None):
+    """ring_gap = cyclic_rsa - linear_rsa and angular decode, averaged over stimuli. `ranks_list`
+    overrides each stimulus's ring positions (for the permutation null); actd/P are reused."""
+    cyc, lin, ang = [], [], []
+    for i, d in enumerate(data):
+        rk = d["ranks"] if ranks_list is None else ranks_list[i]
+        N = d["N"]
+        dif = np.abs(rk[:, None] - rk[None, :])
+        iu = np.triu_indices(len(rk), 1)
+        lind, cycd = dif[iu], np.minimum(dif, N - dif)[iu]
+        if np.std(d["actd"]) > 0 and np.std(cycd) > 0:
+            cyc.append(spearmanr(d["actd"], cycd)[0])
+        if np.std(d["actd"]) > 0 and np.std(lind) > 0:
+            lin.append(spearmanr(d["actd"], lind)[0])
+        P = (d["P"] - d["P"].mean(0)) / (d["P"].std(0) + 1e-12)
+        theta = np.arctan2(P[:, 1], P[:, 0]); true = 2 * np.pi * (rk - 1) / N
+        ang.append(float(max(_R(theta - true), _R(theta + true))))
+    cr = float(np.mean(cyc)) if cyc else float("nan")
+    lr = float(np.mean(lin)) if lin else float("nan")
+    return dict(cyclic_rsa=cr, linear_rsa=lr, ring_gap=cr - lr,
+                angular=float(np.nanmean(ang)) if ang else float("nan"), n=len(cyc))
 
 
 # ----------------------------------------------------------------------------- driver
@@ -135,6 +148,10 @@ def _boot_ci(vals):
     return float(np.percentile(a, 2.5)), float(np.percentile(a, 97.5))
 
 
+def _r(x, nd=3):
+    return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), nd)
+
+
 def run_cell(acts, model, family, condition, scheme, structure, n_boot, n_perm, seed):
     recs = load_records(acts, model, family, condition, scheme, structure=structure, with_extras=True)
     if not recs:
@@ -142,60 +159,74 @@ def run_cell(acts, model, family, condition, scheme, structure, n_boot, n_perm, 
     L = n_layers(recs)
     rng = np.random.default_rng(seed)
 
+    # ---- precompute the expensive, permutation-invariant per-layer data ONCE ----
     if structure == "grid2d":
-        per = [_grid_metrics(S) if (S := _stack_grid(recs, l)) else None for l in range(L)]
-        score = _grid_score
+        per = [_grid_layer_data(recs, l) for l in range(L)]
+        def score_layer(d, cxp=None, cyp=None):
+            if d is None:
+                return np.nan
+            X, Xr, cx, cy, g = d
+            dx, dy = _grid_decode(Xr, cx if cxp is None else cxp, cy if cyp is None else cyp, g)
+            return 0.5 * (dx + dy)
+        obs = [(_grid_full_metrics(*d) if d else None) for d in per]
     elif structure == "cyclic":
-        per = [_cyclic_metrics(recs, l) for l in range(L)]
-        score = _cyclic_score
+        per = [_cyclic_layer_data(recs, l) for l in range(L)]
+        def score_layer(d, ranks_list=None):
+            if d is None:
+                return np.nan
+            return _cyclic_metrics(d, ranks_list)["ring_gap"]
+        obs = [(_cyclic_metrics(d) if d else None) for d in per]
     else:
         raise SystemExit(f"--structure must be grid2d|cyclic (got {structure})")
 
-    scores = np.array([score(m) if m else np.nan for m in per])
+    scores = np.array([score_layer(per[l]) for l in range(L)])
     if not np.isfinite(scores).any():
         return None
     peak = int(np.nanargmax(scores))
-    peak_m = per[peak]
+    peak_m = obs[peak]
 
-    # max-over-layers permutation null (family-wise correction for the layer search)
+    # ---- max-over-layers permutation null (cheap: only re-scores decode on precomputed data) ----
     null_max, null_peak = [], []
     for _ in range(n_perm):
-        if structure == "grid2d":
-            ncols = [_grid_null_once(S, rng) if (S := _stack_grid(recs, l)) else None for l in range(L)]
-        else:
-            ncols = [_cyclic_null_once(recs, l, rng) for l in range(L)]
-        ns = np.array([score(m) if m else np.nan for m in ncols])
+        ns = np.full(L, np.nan)
+        for l in range(L):
+            d = per[l]
+            if d is None:
+                continue
+            if structure == "grid2d":
+                _, _, cx, cy, g = d
+                cxp, cyp = _perm_within(cx, cy, g, rng)
+                ns[l] = score_layer(d, cxp, cyp)
+            else:
+                rl = [rng.permutation(s["ranks"]) for s in d]
+                ns[l] = score_layer(d, rl)
         null_max.append(np.nanmax(ns) if np.isfinite(ns).any() else np.nan)
         null_peak.append(ns[peak])
     fmax = np.array([v for v in null_max if v == v])
     p_fwer = (1 + int((fmax >= scores[peak]).sum())) / (1 + len(fmax)) if len(fmax) else None
 
-    # bootstrap CI over stimuli at the peak layer (resample whole records)
+    # ---- bootstrap CI over stimuli at the peak layer (resample records, recompute peak data) ----
     idx0 = np.arange(len(recs))
     boot = {k: [] for k in peak_m}
     for _ in range(n_boot):
-        bi = rng.choice(idx0, size=len(idx0), replace=True)
-        rb = [recs[i] for i in bi]
+        rb = [recs[i] for i in rng.choice(idx0, size=len(idx0), replace=True)]
         if structure == "grid2d":
-            S = _stack_grid(rb, peak)
-            mb = _grid_metrics(S) if S else None
+            d = _grid_layer_data(rb, peak)
+            mb = _grid_full_metrics(*d) if d else None
         else:
-            mb = _cyclic_metrics(rb, peak)
+            d = _cyclic_layer_data(rb, peak)
+            mb = _cyclic_metrics(d) if d else None
         if mb:
             for k in boot:
                 boot[k].append(mb[k])
     ci = {k: _boot_ci(v) for k, v in boot.items()}
 
-    def _r(x, nd=3):
-        return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), nd)
-
-    out = dict(model=model, family=family, condition=condition, scheme=scheme, structure=structure,
-               n_stimuli=len(recs), peak_layer=peak, peak_frac=round(peak / max(1, L - 1), 3),
-               score_peak=_r(scores[peak]), score_null95=_r(float(np.nanpercentile(null_peak, 95))),
-               p_fwer=_r(p_fwer, 4),
-               metrics={k: _r(v) for k, v in peak_m.items()},
-               ci95={k: [_r(lo), _r(hi)] for k, (lo, hi) in ci.items()})
-    return out
+    return dict(model=model, family=family, condition=condition, scheme=scheme, structure=structure,
+                n_stimuli=len(recs), peak_layer=peak, peak_frac=round(peak / max(1, L - 1), 3),
+                score_peak=_r(scores[peak]), score_null95=_r(float(np.nanpercentile(null_peak, 95))),
+                p_fwer=_r(p_fwer, 4),
+                metrics={k: _r(v) for k, v in peak_m.items()},
+                ci95={k: [_r(lo), _r(hi)] for k, (lo, hi) in ci.items()})
 
 
 def main():
