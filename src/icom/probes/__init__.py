@@ -30,6 +30,8 @@ from icom.probes.curvature import (curvature_profile, geodesic_cv_spearman,
 from icom.probes.circular import circle_fit, circular_rsa, angular_decode
 from icom.probes.crossnobis import (crossnobis_rdm, noise_sd, whitened_rsa,
                                     line_rdm, ring_rdm)
+from icom.probes.cpca import cpca_components, alpha_spectrum
+from icom.probes.dirichlet import dirichlet_energy, dirichlet_profile
 from icom.probes.alignment import (contrast_direction, rank_direction,
                                    rank_contrast_direction, direction_cosine,
                                    subspace_alignment)
@@ -43,6 +45,7 @@ __all__ = [
     "curved_irreducible", "separability_index",
     "circle_fit", "circular_rsa", "angular_decode",
     "crossnobis_rdm", "noise_sd", "whitened_rsa", "line_rdm", "ring_rdm",
+    "cpca_components", "alpha_spectrum", "dirichlet_energy", "dirichlet_profile",
     "contrast_direction", "rank_direction", "rank_contrast_direction",
     "direction_cosine", "subspace_alignment",
 ]

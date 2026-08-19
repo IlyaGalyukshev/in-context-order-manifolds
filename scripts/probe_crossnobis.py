@@ -26,40 +26,54 @@ from icom.probes.crossnobis import crossnobis_rdm, line_rdm, ring_rdm, whitened_
 
 
 def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=False):
-    """Per-stimulus repeat-read records {X:[N,k,L+1,D] f32, ranks:[N], N:int} for one scheme."""
+    """Per-stimulus records for one scheme, from EITHER storage mode written by extract_repeat.py:
+      * reads : {mode:'reads', X:[N,k,L+1,D] f32}   (raw repeat-reads)
+      * rdm   : {mode:'rdm',  RDM:[N,N,L+1] f32}     (crossnobis RDM precomputed at extraction)
+    plus ranks[N], N. The whitened-RSA is identical either way — the RDM store just moves the
+    crossnobis computation from probe-time to extraction-time (disk-compaction for scale)."""
     recs = []
     for f in sorted((Path(acts) / model).glob("*.npz")):
         z = np.load(f, allow_pickle=False)
         m = json.loads(str(z["meta"]))
-        if m["family"] != family or m["condition"] != condition or scheme not in z.files:
+        if m["family"] != family or m["condition"] != condition:
             continue
         if bool(m.get("is_null", False)) != is_null:
             continue
         if structure is not None and m.get("structure", "total_order") != structure:
             continue
-        recs.append({"X": z[scheme].astype(np.float32), "ranks": z["ranks"].astype(int),
-                     "N": int(m["n_items"])})
+        base = {"ranks": z["ranks"].astype(int), "N": int(m["n_items"])}
+        if f"rdm_{scheme}" in z.files:
+            recs.append({"mode": "rdm", "RDM": z[f"rdm_{scheme}"].astype(np.float64), **base})
+        elif scheme in z.files:
+            recs.append({"mode": "reads", "X": z[scheme].astype(np.float32), **base})
     return recs
 
 
-def _interior_reads(rec, layer):
-    """(reads [n_int, k, D], ranks [n_int], N) for one stimulus/layer, or None if too few."""
+def _interior_rdm(rec, layer, n_splits, seed):
+    """(crossnobis RDM [n_int, n_int], ranks [n_int], N) at one layer, interior entities only, or
+    None. Computes crossnobis from raw reads, or slices the precomputed RDM — same object either way."""
     mask = interior_mask(rec["ranks"], rec["N"])
+    if rec["mode"] == "rdm":
+        R = rec["RDM"][:, :, layer]
+        fin = np.isfinite(R).all(axis=1) & mask                # keep interior rows with a finite RDM row
+        idx = np.where(fin)[0]
+        if len(idx) < 4:
+            return None
+        return R[np.ix_(idx, idx)], rec["ranks"][idx], rec["N"]
     reads = rec["X"][mask][:, :, layer, :]                     # [n_int, k, D]
     ranks = rec["ranks"][mask]
-    finite = np.isfinite(reads).all(axis=(1, 2))              # both indexed by the SAME n_int axis
+    finite = np.isfinite(reads).all(axis=(1, 2))
     reads, ranks = reads[finite], ranks[finite]
     if len(ranks) < 4 or reads.shape[1] < 2:
         return None
-    return reads, ranks, rec["N"]
+    return crossnobis_rdm(reads, n_splits=n_splits, seed=seed), ranks, rec["N"]
 
 
 def _stim_rsa(rec, layer, ideal, n_splits, seed):
-    ir = _interior_reads(rec, layer)
+    ir = _interior_rdm(rec, layer, n_splits, seed)
     if ir is None:
         return float("nan")
-    reads, ranks, N = ir
-    rdm = crossnobis_rdm(reads, n_splits=n_splits, seed=seed)
+    rdm, ranks, N = ir
     ideal_rdm = ring_rdm(ranks, N) if ideal == "ring" else line_rdm(ranks)
     return whitened_rsa(rdm, ideal_rdm)
 
@@ -71,14 +85,13 @@ def _layer_mean(recs, layer, ideal, n_splits, seed):
 
 
 def _peak_rdms(recs, layer, n_splits, seed):
-    """Precompute (crossnobis RDM, ranks, N) per stimulus at `layer` — the RDM is invariant to the
+    """Precompute (interior crossnobis RDM, ranks, N) per stimulus at `layer` — invariant to the
     rank-label permutation and to stimulus resampling, so the null/bootstrap reuse these (cheap)."""
     out = []
     for r in recs:
-        ir = _interior_reads(r, layer)
+        ir = _interior_rdm(r, layer, n_splits, seed)
         if ir is not None:
-            reads, ranks, N = ir
-            out.append((crossnobis_rdm(reads, n_splits=n_splits, seed=seed), ranks, N))
+            out.append(ir)
     return out
 
 

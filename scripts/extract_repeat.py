@@ -29,6 +29,10 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=8, help="repeat reads per stimulus")
     ap.add_argument("--loci", default="readout,card_mean",
                     help="comma list of schemes to pool/store (readout/card_mean/last_token/name)")
+    ap.add_argument("--store", default="rdm+mean", choices=["reads", "rdm", "rdm+mean"],
+                    help="reads = raw [N,k,L,D] (8x disk, dev/smoke); rdm = crossnobis RDM [N,N,L] "
+                         "on the fly (whitened-RSA at scale); rdm+mean = + k-mean [N,L,D] (decode/cPCA)")
+    ap.add_argument("--n-splits", type=int, default=20, help="crossnobis CV splits when store!=reads")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260724)
     args = ap.parse_args()
@@ -74,6 +78,20 @@ def main() -> None:
             extra["coord_y"] = np.array([st["coord_y"][e] for e in st["latent_order"]])
         if "cyclic_pos" in st:
             extra["cyclic_pos"] = np.array([st["cyclic_pos"][e] for e in st["latent_order"]])
+        # --store compaction: raw reads (8x disk) vs on-the-fly crossnobis RDM [N,N,L] (+k-mean)
+        arrays = {}
+        if args.store == "reads":
+            arrays.update(rec["pooled"])                       # {scheme: [N,k,L+1,D]}
+        else:
+            from icom.probes.crossnobis import crossnobis_rdm
+            for s, arr in rec["pooled"].items():               # arr [N,k,L+1,D]
+                Lp = arr.shape[2]
+                rdm = np.stack([crossnobis_rdm(arr[:, :, l, :].astype(np.float64),
+                                               n_splits=args.n_splits, seed=0) for l in range(Lp)],
+                               axis=2).astype(np.float32)       # [N,N,L+1]
+                arrays[f"rdm_{s}"] = rdm
+                if args.store == "rdm+mean":
+                    arrays[f"mean_{s}"] = arr.mean(axis=1).astype(np.float16)  # [N,L+1,D]
         np.savez_compressed(
             path,
             ranks=rec["ranks"], entities=json.dumps(st["latent_order"]),
@@ -82,14 +100,14 @@ def main() -> None:
                              "structure": st.get("structure", "total_order"),
                              "is_null": bool(st.get("is_null", False) or st.get("incoherent", False)),
                              "difficulty": st.get("difficulty"), "n_reads": rec["n_reads"],
-                             "model": args.model}),
-            **rec["pooled"], **extra,
+                             "store": args.store, "model": args.model}),
+            **arrays, **extra,
         )
         done += 1
         if done <= 3:
-            sh = {s: v.shape for s, v in rec["pooled"].items()}
+            sh = {s: v.shape for s, v in arrays.items() if s.startswith(("rdm_", "mean_")) or s in loci}
             print(f"[sanity {st['family']}/{st['condition']} null={st.get('incoherent', False)}] "
-                  f"k={rec['n_reads']} shapes={sh}", flush=True)
+                  f"k={rec['n_reads']} store={args.store} shapes={sh}", flush=True)
         if done % 25 == 0:
             print(f"[{done}/{len(stimuli)}] {(time.monotonic()-t0)/done:.2f}s/stim", flush=True)
     print(f"DONE model={args.model} done={done} skipped={skipped} "
