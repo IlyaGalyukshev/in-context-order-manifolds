@@ -42,17 +42,25 @@ def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=
     return recs
 
 
-def _stim_rsa(rec, layer, ideal, n_splits, seed, ranks_override=None):
-    """Whitened crossnobis RSA for ONE stimulus at ONE layer (interior entities), or nan."""
+def _interior_reads(rec, layer):
+    """(reads [n_int, k, D], ranks [n_int], N) for one stimulus/layer, or None if too few."""
     mask = interior_mask(rec["ranks"], rec["N"])
     reads = rec["X"][mask][:, :, layer, :]                     # [n_int, k, D]
-    finite = np.isfinite(reads).all(axis=(1, 2))
-    reads = reads[finite]
-    ranks = (rec["ranks"][mask] if ranks_override is None else ranks_override)[finite]
+    ranks = rec["ranks"][mask]
+    finite = np.isfinite(reads).all(axis=(1, 2))              # both indexed by the SAME n_int axis
+    reads, ranks = reads[finite], ranks[finite]
     if len(ranks) < 4 or reads.shape[1] < 2:
+        return None
+    return reads, ranks, rec["N"]
+
+
+def _stim_rsa(rec, layer, ideal, n_splits, seed):
+    ir = _interior_reads(rec, layer)
+    if ir is None:
         return float("nan")
+    reads, ranks, N = ir
     rdm = crossnobis_rdm(reads, n_splits=n_splits, seed=seed)
-    ideal_rdm = ring_rdm(ranks, rec["N"]) if ideal == "ring" else line_rdm(ranks)
+    ideal_rdm = ring_rdm(ranks, N) if ideal == "ring" else line_rdm(ranks)
     return whitened_rsa(rdm, ideal_rdm)
 
 
@@ -60,6 +68,31 @@ def _layer_mean(recs, layer, ideal, n_splits, seed):
     v = [_stim_rsa(r, layer, ideal, n_splits, seed) for r in recs]
     v = [x for x in v if x == x]
     return (float(np.mean(v)), len(v)) if v else (float("nan"), 0)
+
+
+def _peak_rdms(recs, layer, n_splits, seed):
+    """Precompute (crossnobis RDM, ranks, N) per stimulus at `layer` — the RDM is invariant to the
+    rank-label permutation and to stimulus resampling, so the null/bootstrap reuse these (cheap)."""
+    out = []
+    for r in recs:
+        ir = _interior_reads(r, layer)
+        if ir is not None:
+            reads, ranks, N = ir
+            out.append((crossnobis_rdm(reads, n_splits=n_splits, seed=seed), ranks, N))
+    return out
+
+
+def _rsa_from(rdms, ideal, ranks_list=None):
+    """Mean whitened-RSA over precomputed RDMs; `ranks_list` overrides each stimulus's ranks
+    (for the permutation null)."""
+    v = []
+    for i, (rdm, ranks, N) in enumerate(rdms):
+        rk = ranks if ranks_list is None else ranks_list[i]
+        idl = ring_rdm(rk, N) if ideal == "ring" else line_rdm(rk)
+        x = whitened_rsa(rdm, idl)
+        if x == x:
+            v.append(x)
+    return float(np.mean(v)) if v else float("nan")
 
 
 def _held_out_peak(recs, L, ideal, n_splits, seed):
@@ -92,32 +125,30 @@ def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_
         return None
     L = real[0]["X"].shape[2]
     ho, peak, argmax = _held_out_peak(real, L, ideal, n_splits, seed)
-    rsa_real, n_real = _layer_mean(real, peak, ideal, n_splits, seed)
-    rsa_twin, n_twin = _layer_mean(twin, peak, ideal, n_splits, seed) if twin else (float("nan"), 0)
+    # precompute the peak-layer crossnobis RDMs ONCE (invariant to rank-perm / stimulus-resample)
+    rdms_real = _peak_rdms(real, peak, n_splits, seed)
+    rdms_twin = _peak_rdms(twin, peak, n_splits, seed) if twin else []
+    rsa_real = _rsa_from(rdms_real, ideal)
+    rsa_twin = _rsa_from(rdms_twin, ideal) if rdms_twin else float("nan")
 
-    # within-stimulus rank-permutation null at the peak layer (real stimuli)
+    # within-stimulus rank-permutation null at the peak layer (reuses precomputed RDMs)
     rng = np.random.default_rng(seed)
     null = []
     for _ in range(n_perm):
-        v = [_stim_rsa(r, peak, ideal, n_splits, seed, ranks_override=rng.permutation(r["ranks"]))
-             for r in real]
-        v = [x for x in v if x == x]
-        if v:
-            null.append(float(np.mean(v)))
-    null = np.array(null)
+        perm = [rng.permutation(rk) for (_, rk, _) in rdms_real]
+        null.append(_rsa_from(rdms_real, ideal, ranks_list=perm))
+    null = np.array([x for x in null if x == x])
     p = (1 + int((null >= rsa_real).sum())) / (1 + len(null)) if len(null) else None
     null95 = float(np.nanpercentile(null, 95)) if len(null) else float("nan")
 
-    # bootstrap CI over stimuli on real, twin, and the increment
+    # bootstrap CI over stimuli on real, twin, and the increment (resample precomputed RDMs)
     rr, tt, gg = [], [], []
-    ir = np.arange(len(real)); it = np.arange(len(twin)) if twin else np.array([])
+    ir = np.arange(len(rdms_real)); it = np.arange(len(rdms_twin)) if rdms_twin else np.array([])
     for _ in range(n_boot):
-        rb = [real[i] for i in rng.choice(ir, len(ir), replace=True)]
-        vr = _layer_mean(rb, peak, ideal, n_splits, seed)[0]
+        vr = _rsa_from([rdms_real[i] for i in rng.choice(ir, len(ir), replace=True)], ideal)
         rr.append(vr)
-        if twin:
-            tb = [twin[i] for i in rng.choice(it, len(it), replace=True)]
-            vt = _layer_mean(tb, peak, ideal, n_splits, seed)[0]
+        if rdms_twin:
+            vt = _rsa_from([rdms_twin[i] for i in rng.choice(it, len(it), replace=True)], ideal)
             tt.append(vt); gg.append(vr - vt)
     def _ci(a):
         a = np.array([x for x in a if x == x])
