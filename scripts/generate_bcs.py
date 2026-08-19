@@ -36,6 +36,9 @@ def main():
     ap.add_argument("--structures", action="store_true",
                     help="also emit partial-order (2 chains) + 2D-grid stimuli")
     ap.add_argument("--struct-per-cell", type=int, default=100)
+    ap.add_argument("--declared", default="",
+                    help="E2 declared modes (comma list, e.g. 'list'): emit declared variants that "
+                         "SHARE entities+order with the derived (D1) cell — no coherence twin")
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -76,6 +79,14 @@ def main():
                                                difficulty=diff, condition="shuffle",
                                                incoherent=True)
                             fn.write(json.dumps(z) + "\n"); n_null += 1
+                        # E2 declared variants: share entities+order with D1 (this cell), no twin
+                        for dmode in [m for m in args.declared.split(",") if m]:
+                            sd = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
+                                                difficulty=diff, condition="shuffle", declared=dmode)
+                            sd["difficulty"] = diff
+                            fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                            for q in make_battery(sd):
+                                fq.write(json.dumps(q) + "\n"); n_q += 1
 
     n_struct = 0
     if args.structures:

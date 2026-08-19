@@ -271,21 +271,58 @@ def _prefer(difficulty):
     return {"easy": "near", "hard": "far"}.get(difficulty, "any")
 
 
+def _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout):
+    """E2 / D2 — declared-list: the full order is STATED, not derived from relations (no transitive
+    integration needed). Cards = the ordered list items (for the in-card loci); the roster is still
+    rank-decorrelated for a clean readout. NO coherence twin — a declared order is coherent by
+    construction (the twin machinery is a derived-mode concept). Content-matched to the derived (D1)
+    cell by sharing entities+order under the same seed."""
+    rank_of = {e: r + 1 for r, e in enumerate(entities)}
+    intro = (rel.preamble + "\n\n" if rel.preamble else "") + \
+        "The complete order, from earliest to latest, is stated below."
+    list_line = "Order: " + ", then ".join(f"the {e}" for e in entities) + "."
+    cards = [{"entity": e, "entity_b": None, "text": f"the {e}",
+              "latent_rank": rank_of[e], "presentation_slot": r + 1}
+             for r, e in enumerate(entities)]
+    prompt = intro + "\n\n" + list_line
+    readout_order = None
+    if readout:
+        line, readout_order = roster_line(entities, rng, rank_of=rank_of)
+        prompt += "\n\n" + line
+    content_key = hashlib.sha256(json.dumps(
+        ["declared_list", family, n_items, seed, idx, entities], sort_keys=True).encode()).hexdigest()[:16]
+    stim = {
+        "family": family, "condition": condition, "n_items": n_items, "seed": seed,
+        "relation": rel.name, "degree": d, "balanced": False, "incoherent": False,
+        "declared": "list", "structure": "total_order", "latent_order": list(entities),
+        "cards": cards, "prompt": prompt, "content_key": content_key,
+        "entity_ranks": {e: int(rank_of[e]) for e in entities},
+        "entity_slots": {e: int(rank_of[e]) for e in entities},
+        "readout_order": readout_order, "gate": {"declared": "list"},
+    }
+    stim["stimulus_id"] = hashlib.sha256(json.dumps(
+        ["declared_list", family, condition, n_items, seed, idx, prompt], sort_keys=True).encode()).hexdigest()[:16]
+    return stim
+
+
 def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
                    condition: str = "shuffle", incoherent: bool = False,
-                   difficulty: str = None, readout: bool = True):
+                   difficulty: str = None, readout: bool = True, declared: str = None):
     """One BCS stimulus. family is a RELATIONS key. Returns a dict.
 
     difficulty overrides `balanced`: 'easy' = banded circulant (order recoverable
     by LOCAL chaining), 'hard' = random-regular (LONG edges, needs GLOBAL
     integration). Both are degree-regular / confound-clean.
     readout appends a rank-decorrelated entity roster for a clean read position.
+    declared: None = derived (D1, default); 'list' = E2/D2 declared-list (order stated, no twin).
     """
     prefer = _prefer(difficulty)
     rel = RELATIONS[family]
     rng = rng_for(seed, "bcs", family, n_items, idx, d, balanced)
     entities = [vocab[i] for i in rng.choice(len(vocab), size=n_items, replace=False)]
+    if declared == "list":                                     # E2/D2: shares entities+order with D1
+        return _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout)
 
     edges = (circulant_graph(n_items, d) if balanced
              else regular_graph_with_path(n_items, d, rng, prefer=prefer))

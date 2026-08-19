@@ -290,3 +290,23 @@ def test_metric_families_not_degenerate():
     assert min(cmp_pos.values()) / sum(cmp_pos.values()) > 0.3   # both option slots used
     assert set(btw_pos) == {0, 1, 2}                             # middle lands in every slot
     assert len(cb_vals) >= 4                                     # distance values spread
+
+
+def test_declared_list_shares_order_and_states_it():
+    """E2/D2: declared-list stimulus shares entities+order with the derived (D1) cell, states the
+    full order explicitly, carries no coherence twin, and stays span-extractable."""
+    kw = dict(family="s0_zib", n_items=9, seed=SEED, idx=0, vocab=VOCAB, condition="shuffle")
+    d1 = build_stimulus(**kw, declared=None)
+    d2 = build_stimulus(**kw, declared="list")
+    assert d1["latent_order"] == d2["latent_order"]              # content-matched
+    assert d2["stimulus_id"] != d1["stimulus_id"]
+    assert d2["declared"] == "list" and d2["incoherent"] is False
+    # the order is stated in rank sequence
+    order = d2["latent_order"]
+    pos = [d2["prompt"].index(f"the {e}") for e in order]        # first mention = list position
+    assert pos == sorted(pos)                                    # list is in latent-order sequence
+    # span-extractable: each card text present; readout (last mention) is the roster, not the list
+    roster = d2["prompt"].rfind("Entities:")
+    assert all(d2["prompt"].find(c["text"]) >= 0 for c in d2["cards"])
+    assert all(d2["prompt"].rfind(f"the {e}") >= roster for e in order)     # readout = roster
+    assert all(d2["prompt"].find(f"the {e}") < roster for e in order)       # card = ordered list
