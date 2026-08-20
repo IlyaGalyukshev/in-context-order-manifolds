@@ -75,8 +75,9 @@ def _profile(rec, edges, interior, normalize=True):
     return np.array([dirichlet_energy(X[:, layer, :], edges, normalize) for layer in range(L)])
 
 
-def _cell(recs, edge_map, interior, n_perm, seed):
-    """Mean per-layer energy + mean per-stimulus perm-null energy. Returns (energy[L], null[L], n)."""
+def _per_stim(recs, edge_map, interior, n_perm, seed):
+    """PER-STIMULUS energy + shuffle-null profiles, each [L]. Computed ONCE; the mean/bootstrap
+    reuse these (Dirichlet is expensive, resampling the profiles is not). Returns (en[n,L], nu[n,L])."""
     rng = np.random.default_rng(seed)
     en, nu = [], []
     for r in recs:
@@ -86,19 +87,17 @@ def _cell(recs, edge_map, interior, n_perm, seed):
         prof = _profile(r, edges, interior)
         if prof is None:
             continue
-        en.append(prof)
-        # perm-null: shuffle entity->node assignment (permute X rows) a few times, average energy
         pn = []
         for _ in range(n_perm):
             rr = {"X": r["X"][rng.permutation(len(r["ranks"]))], "ranks": r["ranks"], "N": r["N"]}
             p = _profile(rr, edges, interior)
             if p is not None:
                 pn.append(p)
-        if pn:
-            nu.append(np.mean(pn, axis=0))
+        en.append(prof)
+        nu.append(np.mean(pn, axis=0) if pn else np.full_like(prof, np.nan))
     if not en:
-        return None, None, 0
-    return np.mean(en, axis=0), (np.mean(nu, axis=0) if nu else None), len(en)
+        return None, None
+    return np.array(en), np.array(nu)                          # [n, L], [n, L]
 
 
 def _r(x, nd=3):
@@ -112,20 +111,20 @@ def run(acts, model, stimuli, stimuli_null, family, condition, scheme, n_items, 
     twin = _load_means(acts, model, family, condition, scheme, True, n_items)
     if not real:
         return None
-    e_real, e_null, n = _cell(real, emap, interior, n_perm, seed)
-    e_twin, _, nt = _cell(twin, emap, interior, 1, seed) if twin else (None, None, 0)
-    if e_real is None:
+    en, nu = _per_stim(real, emap, interior, n_perm, seed)     # [n,L] each, computed once
+    if en is None:
         return None
-    # peak = layer of MAX smoothness advantage (null - real): real most below its shuffle
-    gap = (e_null - e_real) if e_null is not None else None
-    peak = int(np.nanargmax(gap)) if gap is not None and np.isfinite(gap).any() else int(np.nanargmin(e_real))
-    # bootstrap CI over stimuli on real energy + (null-real) at peak
-    rng = np.random.default_rng(seed); idx = np.arange(len(real)); gg = []
+    e_real, e_null = np.nanmean(en, axis=0), np.nanmean(nu, axis=0)
+    et = _per_stim(twin, emap, interior, 1, seed)[0] if twin else None
+    e_twin = np.nanmean(et, axis=0) if et is not None else None
+    n, nt = len(en), (len(et) if et is not None else 0)
+    gap = e_null - e_real                                      # >0 ⇒ real smoother than its shuffle
+    peak = int(np.nanargmax(gap)) if np.isfinite(gap).any() else int(np.nanargmin(e_real))
+    # bootstrap CI over stimuli — resample the PRECOMPUTED per-stimulus profiles (cheap)
+    rng = np.random.default_rng(seed); idx = np.arange(n); gg = []
     for _ in range(n_boot):
-        rb = [real[i] for i in rng.choice(idx, len(idx), replace=True)]
-        er, en, _ = _cell(rb, emap, interior, 1, seed)
-        if er is not None and en is not None:
-            gg.append(float(en[peak] - er[peak]))
+        b = rng.choice(idx, n, replace=True)
+        gg.append(float(np.nanmean(nu[b, peak]) - np.nanmean(en[b, peak])))
     gg = np.array([x for x in gg if x == x])
     ci = [_r(np.percentile(gg, 2.5)), _r(np.percentile(gg, 97.5))] if len(gg) > 2 else [None, None]
     return dict(model=model, family=family, n_items=n_items, scheme=scheme, interior=interior,
