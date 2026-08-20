@@ -138,7 +138,8 @@ def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_
     twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items)
     if not real:
         return None
-    L = real[0]["X"].shape[2]
+    r0 = real[0]
+    L = r0["RDM"].shape[2] if r0["mode"] == "rdm" else r0["X"].shape[2]
     ho, peak, argmax = _held_out_peak(real, L, ideal, n_splits, seed)
     # precompute the peak-layer crossnobis RDMs ONCE (invariant to rank-perm / stimulus-resample)
     rdms_real = _peak_rdms(real, peak, n_splits, seed)
