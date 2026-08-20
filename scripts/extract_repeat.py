@@ -100,6 +100,7 @@ def main() -> None:
                              "structure": st.get("structure", "total_order"),
                              "is_null": bool(st.get("is_null", False) or st.get("incoherent", False)),
                              "difficulty": st.get("difficulty"), "n_reads": rec["n_reads"],
+                             "declared": st.get("declared"),   # E2: None=derived(D1), 'list'=declared(D2)
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
         )

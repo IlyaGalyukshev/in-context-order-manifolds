@@ -25,7 +25,8 @@ from icom.probes import interior_mask
 from icom.probes.crossnobis import crossnobis_rdm, line_rdm, ring_rdm, whitened_rsa
 
 
-def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=False, n_items=None):
+def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=False, n_items=None,
+                declared="__any__"):
     """Per-stimulus records for one scheme, from EITHER storage mode written by extract_repeat.py:
       * reads : {mode:'reads', X:[N,k,L+1,D] f32}   (raw repeat-reads)
       * rdm   : {mode:'rdm',  RDM:[N,N,L+1] f32}     (crossnobis RDM precomputed at extraction)
@@ -42,6 +43,8 @@ def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=
         if structure is not None and m.get("structure", "total_order") != structure:
             continue
         if n_items is not None and int(m["n_items"]) != int(n_items):
+            continue
+        if declared != "__any__" and m.get("declared") != declared:   # E2: None=derived, 'list'=declared
             continue
         base = {"ranks": z["ranks"].astype(int), "N": int(m["n_items"])}
         if f"rdm_{scheme}" in z.files:
@@ -133,9 +136,10 @@ def _r(x, nd=3):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), nd)
 
 
-def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_perm, seed, n_items=None):
-    real = load_repeat(acts, model, family, condition, scheme, is_null=False, n_items=n_items)
-    twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items)
+def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_perm, seed,
+             n_items=None, declared="__any__"):
+    real = load_repeat(acts, model, family, condition, scheme, is_null=False, n_items=n_items, declared=declared)
+    twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items, declared=declared)
     if not real:
         return None
     r0 = real[0]
@@ -193,15 +197,19 @@ def main():
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--n-perm", type=int, default=200)
     ap.add_argument("--n-items", type=int, default=None, help="filter to one N (for the N-curve)")
+    ap.add_argument("--declared", default="__any__",
+                    help="E2 filter: '__any__' all, 'none' derived(D1), 'list' declared(D2)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
 
+    decl = None if args.declared == "none" else args.declared   # meta stores derived as JSON null
     results = []
     for family in args.families.split(","):
         try:
             r = run_cell(args.acts, args.model, family, args.condition, args.scheme, args.ideal,
-                         args.n_splits, args.n_boot, args.n_perm, args.seed, n_items=args.n_items)
+                         args.n_splits, args.n_boot, args.n_perm, args.seed, n_items=args.n_items,
+                         declared=decl)
         except Exception as e:
             print(f"{args.model} {family}/{args.scheme}: ERROR {e}", flush=True)
             continue
