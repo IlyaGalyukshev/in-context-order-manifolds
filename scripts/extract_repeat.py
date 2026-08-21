@@ -33,13 +33,16 @@ def main() -> None:
                     help="reads = raw [N,k,L,D] (8x disk, dev/smoke); rdm = crossnobis RDM [N,N,L] "
                          "on the fly (whitened-RSA at scale); rdm+mean = + k-mean [N,L,D] (decode/cPCA)")
     ap.add_argument("--n-splits", type=int, default=20, help="crossnobis CV splits when store!=reads")
+    ap.add_argument("--probe", action="store_true",
+                    help="M1(b): neutral-probe locus — read each entity via k 'Consider the {e}.' "
+                         "paraphrases (KV-cached from the card block) instead of roster re-presentations")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260724)
     args = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    from icom.extraction.repeat import extract_pooled_repeat
+    from icom.extraction.repeat import extract_pooled_repeat, extract_probe_repeat
 
     roster = {}
     mcfg = yaml.safe_load(open(args.models_config))
@@ -70,8 +73,11 @@ def main() -> None:
         if path.exists():
             skipped += 1
             continue
-        rec = extract_pooled_repeat(model, tok, st, is_instruct, k=args.k,
-                                    device=args.device, root_seed=args.seed, loci=loci)
+        if args.probe:
+            rec = extract_probe_repeat(model, tok, st, is_instruct, k=args.k, device=args.device)
+        else:
+            rec = extract_pooled_repeat(model, tok, st, is_instruct, k=args.k,
+                                        device=args.device, root_seed=args.seed, loci=loci)
         extra = {}
         if "coord_x" in st:
             extra["coord_x"] = np.array([st["coord_x"][e] for e in st["latent_order"]])

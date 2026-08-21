@@ -35,6 +35,50 @@ def rebuild_prompt(st: dict, card_perm, roster_perm) -> str:
     return body
 
 
+PROBES = ["Consider the {e}.", "Think about the {e}.", "Recall the {e}.", "Note the {e}.",
+          "Focus on the {e}.", "Regarding the {e}.", "As for the {e}.", "Take the {e}."]
+
+
+def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
+                         device: str = "cuda:0") -> dict:
+    """M1(b) — NEUTRAL-PROBE read locus: forward the CARD BLOCK once (KV-cached), then for each
+    entity × k neutral-probe paraphrases ("Consider the {e}." …) continue from a COPY of that cache
+    and read the entity's token in the probe. Gives a content-neutral, comparable evoked read per
+    entity (the read every declared/derived condition and every assembly-ladder rung can share).
+    Returns {pooled:{'probe':[N,k,L+1,D] fp16}, ranks, entities, n_reads}."""
+    import re
+    from copy import deepcopy
+
+    import torch
+    from icom.extraction.hooks import format_extraction_prompt
+
+    ents = st["latent_order"]; N = len(ents)
+    prompt, cards = st["prompt"], st["cards"]
+    rs = prompt.rfind("\n\nEntities:")                         # drop the roster; cards are the context
+    card_block = prompt[:rs] if rs > 0 else prompt
+    prefix = format_extraction_prompt(tok, card_block, is_instruct)
+    torch.set_grad_enabled(False)
+    penc = tok(prefix, return_tensors="pt", add_special_tokens=False).to(device)
+    pout = model(**penc, use_cache=True)
+    cache = pout.past_key_values                               # DynamicCache (mutated in place → copy per branch)
+
+    per = {e: [] for e in ents}
+    for e in ents:
+        for p in PROBES[:k]:
+            sent = "\n\n" + p.format(e=e)
+            enc = tok(sent, return_offsets_mapping=True, return_tensors="pt", add_special_tokens=False)
+            offs = [tuple(x) for x in enc.pop("offset_mapping")[0].tolist()]
+            m = list(re.finditer(rf"\b[Tt]he {re.escape(e)}\b", sent))[-1]  # the probe mention of e
+            toks = [i for i, (s, en) in enumerate(offs) if s < m.end() and en > m.start() + 4 and en > s]
+            out = model(input_ids=enc["input_ids"].to(device), past_key_values=deepcopy(cache),
+                        use_cache=True, output_hidden_states=True)
+            hid = torch.stack(out.hidden_states, dim=0)[:, 0].float().cpu().numpy()   # [L+1, sent_len, D]
+            per[e].append(hid[:, toks, :].mean(axis=1))        # [L+1, D]
+    probe = np.stack([np.stack(per[e]) for e in ents]).astype(np.float16)             # [N, k, L+1, D]
+    return {"pooled": {"probe": probe}, "ranks": np.array([i + 1 for i in range(N)]),
+            "entities": ents, "n_reads": k}
+
+
 def extract_pooled_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
                           device: str = "cuda:0", root_seed: int = 20260724, loci=None) -> dict:
     """{pooled:{scheme:[N,k,L+1,D] fp16}, ranks:[N], entities:list, n_reads:k}. `loci` (set of
