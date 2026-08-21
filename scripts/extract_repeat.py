@@ -36,6 +36,8 @@ def main() -> None:
     ap.add_argument("--probe", action="store_true",
                     help="M1(b): neutral-probe locus — read each entity via k 'Consider the {e}.' "
                          "paraphrases (KV-cached from the card block) instead of roster re-presentations")
+    ap.add_argument("--prefix", default="none", choices=["none", "order", "mention"],
+                    help="E5 task-expectation prefix prepended to the card block")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260724)
     args = ap.parse_args()
@@ -73,11 +75,13 @@ def main() -> None:
         if path.exists():
             skipped += 1
             continue
+        prefix = {"none": "", "order": "After reading, you will be asked about the ORDER of these entities.",
+                  "mention": "After reading, you will be asked WHICH entities were mentioned."}[args.prefix]
         if args.probe:
             rec = extract_probe_repeat(model, tok, st, is_instruct, k=args.k, device=args.device)
         else:
             rec = extract_pooled_repeat(model, tok, st, is_instruct, k=args.k,
-                                        device=args.device, root_seed=args.seed, loci=loci)
+                                        device=args.device, root_seed=args.seed, loci=loci, prefix=prefix)
         extra = {}
         if "coord_x" in st:
             extra["coord_x"] = np.array([st["coord_x"][e] for e in st["latent_order"]])
@@ -106,7 +110,7 @@ def main() -> None:
                              "structure": st.get("structure", "total_order"),
                              "is_null": bool(st.get("is_null", False) or st.get("incoherent", False)),
                              "difficulty": st.get("difficulty"), "n_reads": rec["n_reads"],
-                             "declared": st.get("declared"),   # E2: None=derived(D1), 'list'=declared(D2)
+                             "declared": st.get("declared"), "prefix": args.prefix,   # E2 declared / E5 prefix
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
         )
