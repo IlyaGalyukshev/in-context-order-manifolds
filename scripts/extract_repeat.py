@@ -113,6 +113,8 @@ def main() -> None:
                              "declared": st.get("declared"), "prefix": args.prefix,   # E2 declared / E5 prefix
                              "determinacy_m": st.get("determinacy_m"),   # E4 dose-response fragment count
                              "determinacy_bridges": st.get("determinacy_bridges"),  # E4-fix bridge count
+                             "redundancy_r": st.get("redundancy_r"),                # E3 repetition count
+                             "redundancy_paraphrase": st.get("redundancy_paraphrase"),  # E3 verbatim/paraphrase
 
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
