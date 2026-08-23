@@ -149,8 +149,12 @@ def main():
     rand = set(allhh[i] for i in rng.choice(len(allhh), args.topk, replace=False))
     print(f"top induction heads (score): {[(li, h, round(float(s),3)) for li,h,s in flat[:5]]}", flush=True)
 
-    real = [json.loads(l) for l in open(args.stimuli)][: args.limit]
-    twin = [json.loads(l) for l in open(args.stimuli_null)][: args.limit]
+    def _load(path):                                          # filter to (family, N) BEFORE limiting —
+        S = [json.loads(l) for l in open(path)]               # else --limit can grab only the wrong-N block
+        S = [s for s in S if s.get("family") == args.family and int(s["n_items"]) == args.n_items]
+        return S[: args.limit]
+    real, twin = _load(args.stimuli), _load(args.stimuli_null)
+    print(f"stimuli: real={len(real)} twin={len(twin)} (family={args.family} N={args.n_items})", flush=True)
 
     def gap(state, tag):
         state["on"] = tag != "intact"
