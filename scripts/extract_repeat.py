@@ -112,6 +112,8 @@ def main() -> None:
                              "difficulty": st.get("difficulty"), "n_reads": rec["n_reads"],
                              "declared": st.get("declared"), "prefix": args.prefix,   # E2 declared / E5 prefix
                              "determinacy_m": st.get("determinacy_m"),   # E4 dose-response fragment count
+                             "determinacy_bridges": st.get("determinacy_bridges"),  # E4-fix bridge count
+
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
         )
