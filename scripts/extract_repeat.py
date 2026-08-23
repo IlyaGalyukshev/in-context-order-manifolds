@@ -111,6 +111,7 @@ def main() -> None:
                              "is_null": bool(st.get("is_null", False) or st.get("incoherent", False)),
                              "difficulty": st.get("difficulty"), "n_reads": rec["n_reads"],
                              "declared": st.get("declared"), "prefix": args.prefix,   # E2 declared / E5 prefix
+                             "determinacy_m": st.get("determinacy_m"),   # E4 dose-response fragment count
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
         )
