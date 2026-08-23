@@ -41,6 +41,8 @@ def main() -> None:
     ap.add_argument("--card-fracs", default="",
                     help="E8 dynamics (requires --probe): comma fractions e.g. '0.25,0.5,0.75,1.0'; "
                          "probe the map after seeing the first frac·ncards cards → one npz per (stim,frac)")
+    ap.add_argument("--probe-type", default="neutral", choices=["neutral", "order", "nonorder"],
+                    help="E7-Q assembly-ladder rung (requires --probe): which computation the probe evokes")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260724)
     args = ap.parse_args()
@@ -87,7 +89,7 @@ def main() -> None:
                   "mention": "After reading, you will be asked WHICH entities were mentioned."}[args.prefix]
         if args.probe:
             rec = extract_probe_repeat(model, tok, st, is_instruct, k=args.k, device=args.device,
-                                       card_frac=(1.0 if fr is None else fr))
+                                       card_frac=(1.0 if fr is None else fr), probe_type=args.probe_type)
         else:
             rec = extract_pooled_repeat(model, tok, st, is_instruct, k=args.k,
                                         device=args.device, root_seed=args.seed, loci=loci, prefix=prefix)
@@ -125,6 +127,7 @@ def main() -> None:
                              "redundancy_r": st.get("redundancy_r"),                # E3 repetition count
                              "redundancy_paraphrase": st.get("redundancy_paraphrase"),  # E3 verbatim/paraphrase
                              "card_frac": rec.get("card_frac", 1.0),   # E8 dynamics fraction of cards seen
+                             "probe_type": rec.get("probe_type", "neutral"),  # E7-Q ladder rung
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
         )

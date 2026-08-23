@@ -27,7 +27,7 @@ from icom.probes.crossnobis import crossnobis_rdm, line_rdm, ring_rdm, whitened_
 
 def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=False, n_items=None,
                 declared="__any__", det_m=None, det_bridges=None, redund_r=None, redund_para=None,
-                card_frac=None):
+                card_frac=None, probe_type=None):
     """Per-stimulus records for one scheme, from EITHER storage mode written by extract_repeat.py:
       * reads : {mode:'reads', X:[N,k,L+1,D] f32}   (raw repeat-reads)
       * rdm   : {mode:'rdm',  RDM:[N,N,L+1] f32}     (crossnobis RDM precomputed at extraction)
@@ -56,6 +56,8 @@ def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=
         if redund_para is not None and bool(m.get("redundancy_paraphrase")) != bool(redund_para):  # E3: verbatim/paraphrase
             continue
         if card_frac is not None and abs(float(m.get("card_frac", 1.0)) - card_frac) > 1e-6:  # E8: dynamics fraction
+            continue
+        if probe_type is not None and m.get("probe_type", "neutral") != probe_type:  # E7-Q: ladder rung
             continue
         base = {"ranks": z["ranks"].astype(int), "N": int(m["n_items"])}
         if f"rdm_{scheme}" in z.files:
@@ -149,9 +151,9 @@ def _r(x, nd=3):
 
 def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_perm, seed,
              n_items=None, declared="__any__", det_m=None, det_bridges=None, layer=None,
-             redund_r=None, redund_para=None, card_frac=None):
-    real = load_repeat(acts, model, family, condition, scheme, is_null=False, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges, redund_r=redund_r, redund_para=redund_para, card_frac=card_frac)
-    twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges, redund_r=redund_r, redund_para=redund_para, card_frac=card_frac)
+             redund_r=None, redund_para=None, card_frac=None, probe_type=None):
+    real = load_repeat(acts, model, family, condition, scheme, is_null=False, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges, redund_r=redund_r, redund_para=redund_para, card_frac=card_frac, probe_type=probe_type)
+    twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges, redund_r=redund_r, redund_para=redund_para, card_frac=card_frac, probe_type=probe_type)
     if not real:
         return None
     r0 = real[0]
@@ -223,6 +225,8 @@ def main():
     ap.add_argument("--redund-para", type=int, default=None,
                     help="E3 filter: 1=paraphrase, 0=verbatim (omit=any)")
     ap.add_argument("--card-frac", type=float, default=None, help="E8 filter: dynamics fraction of cards seen")
+    ap.add_argument("--probe-type", default=None, choices=["neutral", "order", "nonorder"],
+                    help="E7-Q filter: assembly-ladder rung")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
@@ -234,7 +238,8 @@ def main():
             r = run_cell(args.acts, args.model, family, args.condition, args.scheme, args.ideal,
                          args.n_splits, args.n_boot, args.n_perm, args.seed, n_items=args.n_items,
                          declared=decl, det_m=args.det_m, det_bridges=args.det_bridges, layer=args.layer,
-                         redund_r=args.redund_r, redund_para=args.redund_para, card_frac=args.card_frac)
+                         redund_r=args.redund_r, redund_para=args.redund_para, card_frac=args.card_frac,
+                         probe_type=args.probe_type)
         except Exception as e:
             print(f"{args.model} {family}/{args.scheme}: ERROR {e}", flush=True)
             continue

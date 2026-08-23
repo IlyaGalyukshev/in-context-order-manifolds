@@ -39,9 +39,22 @@ def rebuild_prompt(st: dict, card_perm, roster_perm, prefix: str = "") -> str:
 PROBES = ["Consider the {e}.", "Think about the {e}.", "Recall the {e}.", "Note the {e}.",
           "Focus on the {e}.", "Regarding the {e}.", "As for the {e}.", "Take the {e}."]
 
+# E7-Q assembly ladder — three probe banks read at the SAME entity-token locus via the SAME KV-cache
+# branch, differing only in what computation the probe EVOKES: neutral (no task) → non-order (a
+# membership question, off-axis) → order (a rank question, on-axis). rsa/gap across the rungs traces
+# how much of the map is standing vs assembled-under-query.
+ORDER_PROBES = ["What position is the {e}?", "How early is the {e}?", "Where does the {e} rank?",
+                "What place is the {e}?", "Which position is the {e}?", "How far along is the {e}?",
+                "What rank is the {e}?", "Where in the order is the {e}?"]
+NONORDER_PROBES = ["Was the {e} mentioned?", "Is the {e} present?", "Did you see the {e}?",
+                   "Does the {e} appear?", "Is the {e} in the list?", "Was the {e} named?",
+                   "Is the {e} here?", "Did the text include the {e}?"]
+PROBE_BANKS = {"neutral": PROBES, "order": ORDER_PROBES, "nonorder": NONORDER_PROBES}
+
 
 def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
-                         device: str = "cuda:0", card_frac: float = 1.0) -> dict:
+                         device: str = "cuda:0", card_frac: float = 1.0,
+                         probe_type: str = "neutral") -> dict:
     """M1(b) — NEUTRAL-PROBE read locus: forward the CARD BLOCK once (KV-cached), then for each
     entity × k neutral-probe paraphrases ("Consider the {e}." …) continue from a COPY of that cache
     and read the entity's token in the probe. Gives a content-neutral, comparable evoked read per
@@ -70,9 +83,10 @@ def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
     pout = model(**penc, use_cache=True)
     cache = pout.past_key_values                               # DynamicCache (mutated in place → copy per branch)
 
+    bank = PROBE_BANKS[probe_type]                            # E7-Q: neutral / order / nonorder rung
     per = {e: [] for e in ents}
     for e in ents:
-        for p in PROBES[:k]:
+        for p in bank[:k]:
             sent = "\n\n" + p.format(e=e)
             enc = tok(sent, return_offsets_mapping=True, return_tensors="pt", add_special_tokens=False)
             offs = [tuple(x) for x in enc.pop("offset_mapping")[0].tolist()]
@@ -84,7 +98,7 @@ def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
             per[e].append(hid[:, toks, :].mean(axis=1))        # [L+1, D]
     probe = np.stack([np.stack(per[e]) for e in ents]).astype(np.float16)             # [N, k, L+1, D]
     return {"pooled": {"probe": probe}, "ranks": np.array([i + 1 for i in range(N)]),
-            "entities": ents, "n_reads": k, "card_frac": float(card_frac)}
+            "entities": ents, "n_reads": k, "card_frac": float(card_frac), "probe_type": probe_type}
 
 
 def extract_pooled_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
