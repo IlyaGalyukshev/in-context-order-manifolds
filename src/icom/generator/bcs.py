@@ -305,6 +305,69 @@ def _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition
     return stim
 
 
+def build_determinacy(family: str, n_items: int, seed: int, idx: int, vocab, m: int = 1,
+                      d: int = 4, difficulty: str = "hard", incoherent: bool = False):
+    """E4 — determinacy dial. N entities carry a GLOBAL order, but only WITHIN-fragment relations are
+    stated: the ranks are split into `m` contiguous blocks and each block gets its own BCS graph (no
+    cross-block edges). m=1 = the full order; larger m = fewer determined pairs; the global order is
+    only partially recoverable. `q` = fraction of entity pairs that are within a block (determined).
+    Cards are randomly flipped (first-named ⟂ rank without needing the Eulerian balance, which a
+    disconnected fragment graph can't satisfy). Twin injects a cycle inside the largest block."""
+    rel = RELATIONS[family]
+    rng = rng_for(seed, "bcs_det", family, n_items, idx, m, d, incoherent)
+    entities = [vocab[i] for i in rng.choice(len(vocab), size=n_items, replace=False)]  # global rank order
+    blocks = [b.tolist() for b in np.array_split(np.arange(n_items), m)]
+    cards = []
+    for blk in blocks:
+        nb = len(blk)
+        if nb < 2:
+            continue
+        if nb > d:
+            sub = regular_graph_with_path(nb, min(d, nb - 1), rng, prefer=_prefer(difficulty))
+        else:
+            sub = [(i, i + 1) for i in range(nb - 1)]                     # small block → chain
+        sub = sorted(set((min(a, b), max(a, b)) for a, b in sub))
+        if incoherent and any(hi - lo >= 2 for lo, hi in sub):
+            sub = _inject_cycle(sub, rng)                                 # (a,b) = claimed earlier→later
+            directed = True
+        else:
+            directed = False
+        for (a, b) in sub:
+            gi, gj = blk[a], blk[b]                                       # global rank indices
+            earlier, later = entities[gi], entities[gj]                   # coherent: rank order; twin: as CLAIMED
+            flip = bool(rng.integers(2))                                  # first-named ⟂ rank
+            if flip:
+                text = f"The {earlier} {rel.fwd} the {later}."; first, second = earlier, later
+            else:
+                text = f"The {later} {rel.inv} the {earlier}."; first, second = later, earlier
+            cards.append({"lo": min(gi, gj), "hi": max(gi, gj), "text": text,
+                          "entity": first, "entity_b": second})
+    order = _decorrelated_order(cards, entities, rng)
+    cards = [cards[i] for i in order]
+    for slot, c in enumerate(cards, 1):
+        c["presentation_slot"] = slot; c["latent_rank"] = c["lo"] + 1
+    rank_of = {e: r + 1 for r, e in enumerate(entities)}
+    ranks = np.array([rank_of[e] for e in entities])
+    prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
+    line, readout_order = roster_line(entities, rng, rank_of=rank_of)
+    prompt += "\n\n" + line
+    q = sum(len(b) * (len(b) - 1) // 2 for b in blocks) / max(n_items * (n_items - 1) // 2, 1)
+    content_key = hashlib.sha256(json.dumps(
+        ["det", family, n_items, seed, idx, m, incoherent, entities], sort_keys=True).encode()).hexdigest()[:16]
+    stim = {"family": family, "condition": "shuffle", "n_items": n_items, "seed": seed,
+            "relation": rel.name, "degree": d, "balanced": False, "incoherent": incoherent,
+            "structure": "total_order", "determinacy_m": m, "q_determined": round(float(q), 4),
+            "latent_order": list(entities),
+            "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
+                       "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]} for c in cards],
+            "prompt": prompt, "content_key": content_key,
+            "entity_ranks": {e: int(rank_of[e]) for e in entities},
+            "readout_order": readout_order, "gate": {"determinacy_m": m, "q": round(float(q), 4)}}
+    stim["stimulus_id"] = hashlib.sha256(json.dumps(
+        ["det", family, n_items, seed, idx, m, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
+    return stim
+
+
 def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
                    condition: str = "shuffle", incoherent: bool = False,

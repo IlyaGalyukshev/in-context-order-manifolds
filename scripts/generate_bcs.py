@@ -39,6 +39,9 @@ def main():
     ap.add_argument("--declared", default="",
                     help="E2 declared modes (comma list, e.g. 'list'): emit declared variants that "
                          "SHARE entities+order with the derived (D1) cell — no coherence twin")
+    ap.add_argument("--determinacy", default="",
+                    help="E4 determinacy dial (comma m values, e.g. '1,2,4'): emit m-fragment stimuli "
+                         "(+ twins) sharing the global order — q(m)=determined-pair fraction")
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -87,6 +90,16 @@ def main():
                             fs.write(json.dumps(sd) + "\n"); n_stim += 1
                             for q in make_battery(sd):
                                 fq.write(json.dumps(q) + "\n"); n_q += 1
+                        # E4 determinacy: m-fragment real + twin (share the global order)
+                        for mm in [int(x) for x in args.determinacy.split(",") if x]:
+                            from icom.generator.bcs import build_determinacy
+                            sd = build_determinacy(fam, N, SEED, idx, vocab, m=mm, d=args.degree, difficulty=diff)
+                            sd["difficulty"] = diff
+                            fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                            z = build_determinacy(fam, N, SEED, idx, vocab, m=mm, d=args.degree,
+                                                  difficulty=diff, incoherent=True)
+                            z["difficulty"] = diff
+                            fn.write(json.dumps(z) + "\n"); n_null += 1
 
     n_struct = 0
     if args.structures:
