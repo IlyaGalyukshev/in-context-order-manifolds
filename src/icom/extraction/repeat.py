@@ -41,12 +41,14 @@ PROBES = ["Consider the {e}.", "Think about the {e}.", "Recall the {e}.", "Note 
 
 
 def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
-                         device: str = "cuda:0") -> dict:
+                         device: str = "cuda:0", card_frac: float = 1.0) -> dict:
     """M1(b) — NEUTRAL-PROBE read locus: forward the CARD BLOCK once (KV-cached), then for each
     entity × k neutral-probe paraphrases ("Consider the {e}." …) continue from a COPY of that cache
     and read the entity's token in the probe. Gives a content-neutral, comparable evoked read per
     entity (the read every declared/derived condition and every assembly-ladder rung can share).
-    Returns {pooled:{'probe':[N,k,L+1,D] fp16}, ranks, entities, n_reads}."""
+    `card_frac` (E8 dynamics) < 1.0 forwards only the FIRST round(frac·ncards) cards (presentation
+    order) — the entity map is probed after seeing that fraction of the relations, so gap(frac) traces
+    the map assembling within the prompt. Returns {pooled:{'probe':[N,k,L+1,D] fp16}, ranks, ..., card_frac}."""
     import re
     from copy import deepcopy
 
@@ -55,8 +57,13 @@ def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
 
     ents = st["latent_order"]; N = len(ents)
     prompt, cards = st["prompt"], st["cards"]
-    rs = prompt.rfind("\n\nEntities:")                         # drop the roster; cards are the context
-    card_block = prompt[:rs] if rs > 0 else prompt
+    if card_frac < 1.0:                                        # E8: keep the first frac·ncards cards only
+        n_use = max(1, int(round(card_frac * len(cards))))
+        pre = prompt[: prompt.find(cards[0]["text"])]          # preamble (+ separator), or ""
+        card_block = pre + "\n".join(c["text"] for c in cards[:n_use])
+    else:
+        rs = prompt.rfind("\n\nEntities:")                     # drop the roster; cards are the context
+        card_block = prompt[:rs] if rs > 0 else prompt
     prefix = format_extraction_prompt(tok, card_block, is_instruct)
     torch.set_grad_enabled(False)
     penc = tok(prefix, return_tensors="pt", add_special_tokens=False).to(device)
@@ -77,7 +84,7 @@ def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
             per[e].append(hid[:, toks, :].mean(axis=1))        # [L+1, D]
     probe = np.stack([np.stack(per[e]) for e in ents]).astype(np.float16)             # [N, k, L+1, D]
     return {"pooled": {"probe": probe}, "ranks": np.array([i + 1 for i in range(N)]),
-            "entities": ents, "n_reads": k}
+            "entities": ents, "n_reads": k, "card_frac": float(card_frac)}
 
 
 def extract_pooled_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,

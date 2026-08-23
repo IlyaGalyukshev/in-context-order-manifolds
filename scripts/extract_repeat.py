@@ -38,6 +38,9 @@ def main() -> None:
                          "paraphrases (KV-cached from the card block) instead of roster re-presentations")
     ap.add_argument("--prefix", default="none", choices=["none", "order", "mention"],
                     help="E5 task-expectation prefix prepended to the card block")
+    ap.add_argument("--card-fracs", default="",
+                    help="E8 dynamics (requires --probe): comma fractions e.g. '0.25,0.5,0.75,1.0'; "
+                         "probe the map after seeing the first frac·ncards cards → one npz per (stim,frac)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260724)
     args = ap.parse_args()
@@ -68,17 +71,23 @@ def main() -> None:
         spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
         device_map=args.device).eval()
 
+    fracs = [float(x) for x in args.card_fracs.split(",") if x] if args.card_fracs else [None]
+    if fracs != [None] and not args.probe:
+        raise SystemExit("--card-fracs requires --probe (E8 dynamics uses the neutral-probe locus)")
     done = skipped = 0
     t0 = time.monotonic()
     for st in stimuli:
-        path = out_dir / f"{st['stimulus_id']}.npz"
+      for fr in fracs:                                         # E8: one npz per (stimulus, card fraction)
+        tag = "" if fr is None else f"_f{int(round(fr * 100))}"
+        path = out_dir / f"{st['stimulus_id']}{tag}.npz"
         if path.exists():
             skipped += 1
             continue
         prefix = {"none": "", "order": "After reading, you will be asked about the ORDER of these entities.",
                   "mention": "After reading, you will be asked WHICH entities were mentioned."}[args.prefix]
         if args.probe:
-            rec = extract_probe_repeat(model, tok, st, is_instruct, k=args.k, device=args.device)
+            rec = extract_probe_repeat(model, tok, st, is_instruct, k=args.k, device=args.device,
+                                       card_frac=(1.0 if fr is None else fr))
         else:
             rec = extract_pooled_repeat(model, tok, st, is_instruct, k=args.k,
                                         device=args.device, root_seed=args.seed, loci=loci, prefix=prefix)
@@ -115,17 +124,17 @@ def main() -> None:
                              "determinacy_bridges": st.get("determinacy_bridges"),  # E4-fix bridge count
                              "redundancy_r": st.get("redundancy_r"),                # E3 repetition count
                              "redundancy_paraphrase": st.get("redundancy_paraphrase"),  # E3 verbatim/paraphrase
-
+                             "card_frac": rec.get("card_frac", 1.0),   # E8 dynamics fraction of cards seen
                              "store": args.store, "model": args.model}),
             **arrays, **extra,
         )
         done += 1
         if done <= 3:
             sh = {s: v.shape for s, v in arrays.items() if s.startswith(("rdm_", "mean_")) or s in loci}
-            print(f"[sanity {st['family']}/{st['condition']} null={st.get('incoherent', False)}] "
+            print(f"[sanity {st['family']}/{st['condition']} frac={fr} null={st.get('incoherent', False)}] "
                   f"k={rec['n_reads']} store={args.store} shapes={sh}", flush=True)
         if done % 25 == 0:
-            print(f"[{done}/{len(stimuli)}] {(time.monotonic()-t0)/done:.2f}s/stim", flush=True)
+            print(f"[{done}/{len(stimuli)*len(fracs)}] {(time.monotonic()-t0)/done:.2f}s/stim", flush=True)
     print(f"DONE model={args.model} done={done} skipped={skipped} "
           f"total_s={time.monotonic()-t0:.0f}", flush=True)
 
