@@ -197,6 +197,50 @@ def test_determinacy_bridges_decouple_q_from_difficulty():
     assert _has_cycle(directed, 16), "determinacy twin must contain a cycle"
 
 
+def test_redundancy_scales_cards_and_holds_gates():
+    """E3: r× card repetition scales the card count exactly r-fold, keeps the entity/rank substrate fixed
+    across the r-sweep, and preserves confounds — first-named⟂rank stays 0.5 per entity (shared Eulerian
+    orientation duplicated r×). Verbatim repeats the EXACT text r×; paraphrase diversifies surfaces."""
+    from icom.generator.bcs import build_redundancy, _has_cycle
+    from collections import Counter
+    import re
+    base_n = None; orders = []
+    for r in (1, 2, 4):
+        s = build_redundancy("s1_size", 12, SEED, 3, VOCAB, r=r, d=4, difficulty="hard")
+        orders.append(tuple(s["latent_order"]))
+        n = len(s["cards"])
+        if r == 1:
+            base_n = n
+        else:
+            assert n == base_n * r, f"r={r}: expected {base_n*r} cards, got {n}"
+        # first-named ⟂ rank: every entity named-first in exactly half its mentions
+        first = Counter(c["entity"] for c in s["cards"]); both = Counter()
+        for c in s["cards"]:
+            both[c["entity"]] += 1; both[c["entity_b"]] += 1
+        for e in s["latent_order"]:
+            assert abs(first[e] / both[e] - 0.5) < 1e-9, f"subjfrac≠0.5 for {e} at r={r}"
+    assert orders[0] == orders[1] == orders[2], "r-sweep must share the entity/rank substrate"
+    # verbatim: each unique card text appears exactly r times
+    sv = build_redundancy("s1_size", 12, SEED, 3, VOCAB, r=4, d=4, difficulty="hard", paraphrase=False)
+    cv = Counter(c["text"] for c in sv["cards"])
+    assert set(cv.values()) == {4}, f"verbatim r=4 should repeat each text exactly 4×: {cv.most_common(2)}"
+    # paraphrase: strictly more distinct surfaces than verbatim (same #cards)
+    sp = build_redundancy("s1_size", 12, SEED, 3, VOCAB, r=4, d=4, difficulty="hard", paraphrase=True)
+    assert len(sp["cards"]) == len(sv["cards"])
+    assert len(set(c["text"] for c in sp["cards"])) > len(cv), "paraphrase must diversify surfaces"
+    # twin has a cycle
+    z = build_redundancy("s1_size", 12, SEED, 3, VOCAB, r=2, d=4, difficulty="hard", incoherent=True)
+    ent = {e: i for i, e in enumerate(z["latent_order"])}
+    directed = []
+    for c in z["cards"]:
+        if " is smaller than " in c["text"] or " is tinier than " in c["text"] or " measures less than " in c["text"] or " is not as large as " in c["text"]:
+            a, b = re.match(r"The (\w+) .+ the (\w+)\.", c["text"]).groups()
+        else:
+            b, a = re.match(r"The (\w+) .+ the (\w+)\.", c["text"]).groups()
+        directed.append((ent[a], ent[b]))
+    assert _has_cycle(directed, 12), "redundancy twin must contain a cycle"
+
+
 def test_pairwise_pairs_distinct():
     """Total-order pairwise: no unordered pair is asked more than once (beyond
     its swap), i.e. distinct pairs per bin (no pseudo-replication)."""

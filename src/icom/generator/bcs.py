@@ -45,6 +45,7 @@ class Relation:
     high_pole: str    # reconstruction superlative for rank N
     cmp_low: str      # pairwise comparative ("smaller", "earlier in the order")
     preamble: str = ""  # optional in-context transitivity declaration (S0)
+    paraphrases: tuple = ()  # E3: alternate (fwd, inv) surface pairs for the SAME relation (paraphrase-redundancy)
 
 
 RELATIONS = {
@@ -61,9 +62,15 @@ RELATIONS = {
         preamble="In this puzzle, 'quomps' is a transitive relation: if X quomps Y and Y quomps Z, then X quomps Z. 'X quomps Y' means X comes before Y in the quomp-order.",
     ),
     # S1 — meaningful transitive comparatives over nonce entities
-    "s1_size": Relation("s1_size", "is smaller than", "is larger than", "smallest", "largest", "smaller"),
-    "s1_loud": Relation("s1_loud", "is quieter than", "is louder than", "quietest", "loudest", "quieter"),
-    "s1_heat": Relation("s1_heat", "is cooler than", "is hotter than", "coolest", "hottest", "cooler"),
+    "s1_size": Relation("s1_size", "is smaller than", "is larger than", "smallest", "largest", "smaller",
+        paraphrases=(("is tinier than", "is bigger than"), ("measures less than", "measures more than"),
+                     ("is not as large as", "is not as small as"))),
+    "s1_loud": Relation("s1_loud", "is quieter than", "is louder than", "quietest", "loudest", "quieter",
+        paraphrases=(("is softer than", "is noisier than"), ("sounds fainter than", "sounds stronger than"),
+                     ("is less loud than", "is less quiet than"))),
+    "s1_heat": Relation("s1_heat", "is cooler than", "is hotter than", "coolest", "hottest", "cooler",
+        paraphrases=(("is colder than", "is warmer than"), ("feels chillier than", "feels toastier than"),
+                     ("is less hot than", "is less cool than"))),
 }
 # S2 (grounded magnitude with a nonce unit) is generated specially — see below.
 
@@ -397,6 +404,71 @@ def build_determinacy(family: str, n_items: int, seed: int, idx: int, vocab, m: 
             "gate": {"determinacy_m": m, "bridges": nbridge, "q": round(float(q), 4)}}
     stim["stimulus_id"] = hashlib.sha256(json.dumps(
         ["det", family, n_items, seed, idx, m, bridges, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
+    return stim
+
+
+def build_redundancy(family: str, n_items: int, seed: int, idx: int, vocab, r: int = 1,
+                     d: int = 4, difficulty: str = "hard", incoherent: bool = False,
+                     paraphrase: bool = False):
+    """E3 — redundancy / emergence dial. Each stated relation (card) is presented `r` times, shuffled.
+    Uniform r-duplication preserves EVERY confound gate (degree-regular ×r, first-named⟂rank still 0.5
+    via one shared Eulerian orientation, mean-position⟂rank under shuffle). `paraphrase=False` (verbatim)
+    repeats the EXACT sentence — feeds the induction/previous-token path by exact-bigram repetition;
+    `paraphrase=True` restates the SAME relation with a different surface each copy (rel.paraphrases) —
+    same information, no exact-token repeat, so a redundancy gain must come from ABSTRACTION, not induction.
+    Twin injects a cycle (no total order), duplicated identically. gap(r) = emergence curve; verbatim−
+    paraphrase at fixed r dissociates induction from integration without opening heads (E6 does it at the
+    head level). r-substrate (entities/ranks/graph) is fixed across the r-sweep (rng not keyed on r)."""
+    rel = RELATIONS[family]
+    rng = rng_for(seed, "bcs_redund", family, n_items, idx, d, incoherent)  # NOT keyed on r/paraphrase
+    entities = [vocab[i] for i in rng.choice(len(vocab), size=n_items, replace=False)]
+    edges = regular_graph_with_path(n_items, min(d, n_items - 1), rng, prefer=_prefer(difficulty))
+    edge_list = sorted(set((min(a, b), max(a, b)) for a, b in edges))
+    surfaces = [(rel.fwd, rel.inv)] + list(rel.paraphrases)
+    if paraphrase and len(surfaces) < 2:
+        paraphrase = False                                          # nonce relation w/o bank → verbatim
+    # base directed cards: real = Eulerian first-named balance; twin = injected cycle. flip = name later first.
+    base = []
+    if incoherent:
+        for (lo, hi) in _inject_cycle(edge_list, rng):
+            base.append((min(lo, hi), max(lo, hi), lo, hi, bool(rng.integers(2))))
+    else:
+        tail = eulerian_orientation(edge_list, n_items)
+        for k, (lo, hi) in enumerate(edge_list):
+            base.append((lo, hi, lo, hi, tail[k] != lo))
+    cards = []
+    for (e_lo, e_hi, clo, chi, flip) in base:                       # expand each edge into r copies
+        earlier, later = entities[clo], entities[chi]
+        for j in range(r):
+            fwd_s, inv_s = surfaces[j % len(surfaces)] if paraphrase else surfaces[0]
+            if not flip:
+                text = f"The {earlier} {fwd_s} the {later}."; first, second = earlier, later
+            else:
+                text = f"The {later} {inv_s} the {earlier}."; first, second = later, earlier
+            cards.append({"lo": e_lo, "hi": e_hi, "text": text, "entity": first, "entity_b": second})
+    order = _decorrelated_order(cards, entities, rng)
+    cards = [cards[i] for i in order]
+    for slot, c in enumerate(cards, 1):
+        c["presentation_slot"] = slot; c["latent_rank"] = c["lo"] + 1
+    rank_of = {e: rr + 1 for rr, e in enumerate(entities)}
+    ranks = np.array([rank_of[e] for e in entities])
+    prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
+    line, readout_order = roster_line(entities, rng, rank_of=rank_of)
+    prompt += "\n\n" + line
+    content_key = hashlib.sha256(json.dumps(
+        ["redund", family, n_items, seed, idx, r, paraphrase, incoherent, entities], sort_keys=True).encode()).hexdigest()[:16]
+    stim = {"family": family, "condition": "shuffle", "n_items": n_items, "seed": seed,
+            "relation": rel.name, "degree": d, "balanced": False, "incoherent": incoherent,
+            "structure": "total_order", "redundancy_r": int(r), "redundancy_paraphrase": bool(paraphrase),
+            "latent_order": list(entities),
+            "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
+                       "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]} for c in cards],
+            "prompt": prompt, "content_key": content_key,
+            "entity_ranks": {e: int(rank_of[e]) for e in entities},
+            "readout_order": readout_order,
+            "gate": {"redundancy_r": int(r), "paraphrase": bool(paraphrase)}}
+    stim["stimulus_id"] = hashlib.sha256(json.dumps(
+        ["redund", family, n_items, seed, idx, r, paraphrase, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
     return stim
 
 

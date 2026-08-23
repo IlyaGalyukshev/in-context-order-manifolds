@@ -47,6 +47,12 @@ def main():
     ap.add_argument("--det-bridges", default="",
                     help="E4-fix: comma bridge counts (0..m-1) swept at fixed --det-bridge-m; q rises "
                          "with bridges while block size / reading load stay constant (decouples q from difficulty)")
+    ap.add_argument("--redundancy", default="",
+                    help="E3 redundancy dial (comma r values, e.g. '1,2,4,8'): each card presented r× (shuffled), "
+                         "real+twin, sharing entities/order — gap(r) emergence curve")
+    ap.add_argument("--redundancy-paraphrase", action="store_true",
+                    help="E3: also emit paraphrase variants (same relation, different surface each copy) → "
+                         "verbatim(induction) vs paraphrase(abstraction) dissociation at fixed r")
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -117,6 +123,20 @@ def main():
                                                       d=args.degree, difficulty=diff, incoherent=True, bridges=bb)
                                 z["difficulty"] = diff
                                 fn.write(json.dumps(z) + "\n"); n_null += 1
+                        # E3 redundancy: r× card repetition (verbatim + optional paraphrase), real+twin
+                        if args.redundancy:
+                            from icom.generator.bcs import build_redundancy
+                            modes = [False, True] if args.redundancy_paraphrase else [False]
+                            for rr in [int(x) for x in args.redundancy.split(",") if x != ""]:
+                                for para in modes:
+                                    sd = build_redundancy(fam, N, SEED, idx, vocab, r=rr, d=args.degree,
+                                                          difficulty=diff, paraphrase=para)
+                                    sd["difficulty"] = diff
+                                    fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                                    z = build_redundancy(fam, N, SEED, idx, vocab, r=rr, d=args.degree,
+                                                         difficulty=diff, incoherent=True, paraphrase=para)
+                                    z["difficulty"] = diff
+                                    fn.write(json.dumps(z) + "\n"); n_null += 1
 
     n_struct = 0
     if args.structures:
