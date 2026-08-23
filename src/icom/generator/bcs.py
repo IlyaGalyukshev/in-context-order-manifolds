@@ -475,7 +475,8 @@ def build_redundancy(family: str, n_items: int, seed: int, idx: int, vocab, r: i
 def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
                    condition: str = "shuffle", incoherent: bool = False,
-                   difficulty: str = None, readout: bool = True, declared: str = None):
+                   difficulty: str = None, readout: bool = True, declared: str = None,
+                   summary: bool = False):
     """One BCS stimulus. family is a RELATIONS key. Returns a dict.
 
     difficulty overrides `balanced`: 'easy' = banded circulant (order recoverable
@@ -483,6 +484,10 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     integration). Both are degree-regular / confound-clean.
     readout appends a rank-decorrelated entity roster for a clean read position.
     declared: None = derived (D1, default); 'list' = E2/D2 declared-list (order stated, no twin).
+    summary: E2/D4 — derived relations AS D1, then append a final declarative order-summary line
+    (before the roster). Tests whether a post-hoc summary retroactively WRITES the map: does the
+    geometry then match declared (D2) or stay derived (D1)? Twin's summary states the generative
+    (pre-cycle) order, which its cyclic relations contradict.
     """
     prefer = _prefer(difficulty)
     rel = RELATIONS[family]
@@ -540,6 +545,9 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     ranks = np.array([rank_of[e] for e in entities])
 
     prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
+    if summary:                                                # E2/D4: retroactive order-summary
+        prompt += "\n\nThe complete order, from earliest to latest, is: " + \
+                  ", then ".join(f"the {e}" for e in entities) + "."
     readout_order = None
     if readout:
         line, readout_order = roster_line(entities, rng, rank_of=rank_of)
@@ -551,11 +559,12 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                          ranks, meanpos, d) if not incoherent else {"incoherent": True}
 
     content_key = hashlib.sha256(
-        json.dumps([family, n_items, seed, idx, d, balanced, incoherent, entities, edge_list],
+        json.dumps([family, n_items, seed, idx, d, balanced, incoherent, entities, edge_list, summary],
                    sort_keys=True).encode()).hexdigest()[:16]
     stim = {
         "family": family, "condition": condition, "n_items": n_items, "seed": seed,
         "relation": rel.name, "degree": d, "balanced": balanced, "incoherent": incoherent,
+        "declared": ("derived_summary" if summary else None),   # E2/D4 tag (None = plain derived D1)
         "latent_order": list(entities),
         "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
                    "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]}

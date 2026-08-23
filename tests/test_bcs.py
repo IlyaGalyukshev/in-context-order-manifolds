@@ -197,6 +197,36 @@ def test_determinacy_bridges_decouple_q_from_difficulty():
     assert _has_cycle(directed, 16), "determinacy twin must contain a cycle"
 
 
+def test_d4_summary_appends_order_and_keeps_derived_relations():
+    """E2/D4: derived relations (as D1) PLUS a retroactive order-summary line. The summary must state the
+    full latent order, the derived relation cards must still be present (so it's derived+summary, not a
+    bare list), and the incoherent twin must still contain a cycle."""
+    from icom.generator.bcs import build_stimulus, _has_cycle
+    s = build_stimulus("s1_size", 12, SEED, 1, VOCAB, d=4, difficulty="hard", condition="shuffle", summary=True)
+    assert s["declared"] == "derived_summary"
+    assert "The complete order, from earliest to latest, is:" in s["prompt"]
+    for e in s["latent_order"]:                          # every entity named in the summary
+        assert f"the {e}" in s["prompt"]
+    assert len([c for c in s["cards"] if c["entity_b"]]) >= 8, "derived relation cards must remain"
+    # D1 (no summary) and D4 (summary) differ (distinct stimulus_id / content_key)
+    s1 = build_stimulus("s1_size", 12, SEED, 1, VOCAB, d=4, difficulty="hard", condition="shuffle")
+    assert s["stimulus_id"] != s1["stimulus_id"] and s["content_key"] != s1["content_key"]
+    z = build_stimulus("s1_size", 12, SEED, 1, VOCAB, d=4, difficulty="hard", condition="shuffle",
+                       summary=True, incoherent=True)
+    import re
+    ent = {e: i for i, e in enumerate(z["latent_order"])}
+    directed = []
+    for c in z["cards"]:
+        if c["entity_b"] is None:
+            continue
+        if " is smaller than " in c["text"]:
+            a, b = re.match(r"The (\w+) is smaller than the (\w+)\.", c["text"]).groups()
+        else:
+            b, a = re.match(r"The (\w+) is larger than the (\w+)\.", c["text"]).groups()
+        directed.append((ent[a], ent[b]))
+    assert _has_cycle(directed, 12), "D4 twin must contain a cycle"
+
+
 def test_redundancy_scales_cards_and_holds_gates():
     """E3: r× card repetition scales the card count exactly r-fold, keeps the entity/rank substrate fixed
     across the r-sweep, and preserves confounds — first-named⟂rank stays 0.5 per entity (shared Eulerian

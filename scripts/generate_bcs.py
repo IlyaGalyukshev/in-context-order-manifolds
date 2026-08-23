@@ -93,14 +93,26 @@ def main():
                                                difficulty=diff, condition="shuffle",
                                                incoherent=True)
                             fn.write(json.dumps(z) + "\n"); n_null += 1
-                        # E2 declared variants: share entities+order with D1 (this cell), no twin
+                        # E2 declared variants: share entities+order with D1 (this cell)
                         for dmode in [m for m in args.declared.split(",") if m]:
-                            sd = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
-                                                difficulty=diff, condition="shuffle", declared=dmode)
-                            sd["difficulty"] = diff
-                            fs.write(json.dumps(sd) + "\n"); n_stim += 1
-                            for q in make_battery(sd):
-                                fq.write(json.dumps(q) + "\n"); n_q += 1
+                            if dmode == "summary":                 # D4 = derived + retroactive summary (HAS a twin)
+                                sd = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
+                                                    difficulty=diff, condition="shuffle", summary=True)
+                                sd["difficulty"] = diff
+                                fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                                for q in make_battery(sd):
+                                    fq.write(json.dumps(q) + "\n"); n_q += 1
+                                zz = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
+                                                    difficulty=diff, condition="shuffle", summary=True, incoherent=True)
+                                zz["difficulty"] = diff
+                                fn.write(json.dumps(zz) + "\n"); n_null += 1
+                            else:                                  # D2 = declared list (coherent by construction, no twin)
+                                sd = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
+                                                    difficulty=diff, condition="shuffle", declared=dmode)
+                                sd["difficulty"] = diff
+                                fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                                for q in make_battery(sd):
+                                    fq.write(json.dumps(q) + "\n"); n_q += 1
                         # E4 determinacy: m-fragment real + twin (share the global order)
                         for mm in [int(x) for x in args.determinacy.split(",") if x]:
                             from icom.generator.bcs import build_determinacy
