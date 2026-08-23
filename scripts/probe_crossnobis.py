@@ -141,14 +141,17 @@ def _r(x, nd=3):
 
 
 def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_perm, seed,
-             n_items=None, declared="__any__", det_m=None, det_bridges=None):
+             n_items=None, declared="__any__", det_m=None, det_bridges=None, layer=None):
     real = load_repeat(acts, model, family, condition, scheme, is_null=False, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges)
     twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges)
     if not real:
         return None
     r0 = real[0]
     L = r0["RDM"].shape[2] if r0["mode"] == "rdm" else r0["X"].shape[2]
-    ho, peak, argmax = _held_out_peak(real, L, ideal, n_splits, seed)
+    if layer is not None:                                          # force a fixed decode layer (skip held-out peak)
+        peak = int(layer); ho = argmax = _layer_mean(real, peak, ideal, n_splits, seed)[0]
+    else:
+        ho, peak, argmax = _held_out_peak(real, L, ideal, n_splits, seed)
     # precompute the peak-layer crossnobis RDMs ONCE (invariant to rank-perm / stimulus-resample)
     rdms_real = _peak_rdms(real, peak, n_splits, seed)
     rdms_twin = _peak_rdms(twin, peak, n_splits, seed) if twin else []
@@ -206,6 +209,8 @@ def main():
     ap.add_argument("--det-m", type=int, default=None, help="E4 filter: fragment count m")
     ap.add_argument("--det-bridges", type=int, default=None,
                     help="E4-fix filter: inter-block bridge count (dose-response at fixed m)")
+    ap.add_argument("--layer", type=int, default=None,
+                    help="force decode at this layer index instead of the held-out peak (deep-locus check)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
@@ -216,7 +221,7 @@ def main():
         try:
             r = run_cell(args.acts, args.model, family, args.condition, args.scheme, args.ideal,
                          args.n_splits, args.n_boot, args.n_perm, args.seed, n_items=args.n_items,
-                         declared=decl, det_m=args.det_m, det_bridges=args.det_bridges)
+                         declared=decl, det_m=args.det_m, det_bridges=args.det_bridges, layer=args.layer)
         except Exception as e:
             print(f"{args.model} {family}/{args.scheme}: ERROR {e}", flush=True)
             continue
