@@ -306,15 +306,24 @@ def _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition
 
 
 def build_determinacy(family: str, n_items: int, seed: int, idx: int, vocab, m: int = 1,
-                      d: int = 4, difficulty: str = "hard", incoherent: bool = False):
+                      d: int = 4, difficulty: str = "hard", incoherent: bool = False,
+                      bridges: int = 0):
     """E4 — determinacy dial. N entities carry a GLOBAL order, but only WITHIN-fragment relations are
     stated: the ranks are split into `m` contiguous blocks and each block gets its own BCS graph (no
     cross-block edges). m=1 = the full order; larger m = fewer determined pairs; the global order is
     only partially recoverable. `q` = fraction of entity pairs that are within a block (determined).
     Cards are randomly flipped (first-named ⟂ rank without needing the Eulerian balance, which a
-    disconnected fragment graph can't satisfy). Twin injects a cycle inside the largest block."""
+    disconnected fragment graph can't satisfy). Twin injects a cycle inside the largest block.
+
+    `bridges` (E4-fix, the difficulty-controlled dial): with `m` HELD FIXED, add `bridges` inter-block
+    edges connecting consecutive blocks (block i's top rank → block i+1's bottom). Each bridge, via
+    within-block transitivity, determines EVERY cross-pair between the two blocks, so `q` climbs in
+    steps (0 bridges = m disconnected blocks; m−1 bridges = full order) while per-card reading load and
+    block size — the difficulty confound that entangled the m-sweep — stay constant. The block substrate
+    (entities, ranks, per-block graphs) is identical across the bridge sweep (rng is not keyed on
+    `bridges`), so geometry differences isolate determinacy. Sweep bridges 0..m−1 at one fixed m."""
     rel = RELATIONS[family]
-    rng = rng_for(seed, "bcs_det", family, n_items, idx, m, d, incoherent)
+    rng = rng_for(seed, "bcs_det", family, n_items, idx, m, d, incoherent)  # NOT keyed on bridges: shared substrate
     entities = [vocab[i] for i in rng.choice(len(vocab), size=n_items, replace=False)]  # global rank order
     blocks = [b.tolist() for b in np.array_split(np.arange(n_items), m)]
     cards = []
@@ -342,6 +351,17 @@ def build_determinacy(family: str, n_items: int, seed: int, idx: int, vocab, m: 
                 text = f"The {later} {rel.inv} the {earlier}."; first, second = later, earlier
             cards.append({"lo": min(gi, gj), "hi": max(gi, gj), "text": text,
                           "entity": first, "entity_b": second})
+    valid_blocks = [b for b in blocks if len(b) >= 2]                # blocks that actually carry a graph
+    nbridge = max(0, min(bridges, len(valid_blocks) - 1))            # bridges join consecutive valid blocks
+    for bi in range(nbridge):
+        gi, gj = valid_blocks[bi][-1], valid_blocks[bi + 1][0]       # top rank of block i, bottom of i+1 (gi<gj)
+        earlier, later = entities[gi], entities[gj]                  # coherent: global-rank order
+        flip = bool(rng.integers(2))                                 # first-named ⟂ rank (same as within-block)
+        if flip:
+            text = f"The {earlier} {rel.fwd} the {later}."; first, second = earlier, later
+        else:
+            text = f"The {later} {rel.inv} the {earlier}."; first, second = later, earlier
+        cards.append({"lo": gi, "hi": gj, "text": text, "entity": first, "entity_b": second})
     order = _decorrelated_order(cards, entities, rng)
     cards = [cards[i] for i in order]
     for slot, c in enumerate(cards, 1):
@@ -351,20 +371,32 @@ def build_determinacy(family: str, n_items: int, seed: int, idx: int, vocab, m: 
     prompt = (rel.preamble + "\n\n" if rel.preamble else "") + "\n".join(c["text"] for c in cards)
     line, readout_order = roster_line(entities, rng, rank_of=rank_of)
     prompt += "\n\n" + line
-    q = sum(len(b) * (len(b) - 1) // 2 for b in blocks) / max(n_items * (n_items - 1) // 2, 1)
+    parent = list(range(len(valid_blocks)))                         # union-find: bridged blocks → one comparable set
+    def _find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]; x = parent[x]
+        return x
+    for bi in range(nbridge):
+        parent[_find(bi + 1)] = _find(bi)
+    comp_size: dict = {}
+    for k, blk in enumerate(valid_blocks):
+        r = _find(k); comp_size[r] = comp_size.get(r, 0) + len(blk)
+    det_pairs = sum(s * (s - 1) // 2 for s in comp_size.values())   # all within-component pairs are determined
+    q = det_pairs / max(n_items * (n_items - 1) // 2, 1)
     content_key = hashlib.sha256(json.dumps(
-        ["det", family, n_items, seed, idx, m, incoherent, entities], sort_keys=True).encode()).hexdigest()[:16]
+        ["det", family, n_items, seed, idx, m, bridges, incoherent, entities], sort_keys=True).encode()).hexdigest()[:16]
     stim = {"family": family, "condition": "shuffle", "n_items": n_items, "seed": seed,
             "relation": rel.name, "degree": d, "balanced": False, "incoherent": incoherent,
-            "structure": "total_order", "determinacy_m": m, "q_determined": round(float(q), 4),
-            "latent_order": list(entities),
+            "structure": "total_order", "determinacy_m": m, "determinacy_bridges": nbridge,
+            "q_determined": round(float(q), 4), "latent_order": list(entities),
             "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
                        "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]} for c in cards],
             "prompt": prompt, "content_key": content_key,
             "entity_ranks": {e: int(rank_of[e]) for e in entities},
-            "readout_order": readout_order, "gate": {"determinacy_m": m, "q": round(float(q), 4)}}
+            "readout_order": readout_order,
+            "gate": {"determinacy_m": m, "bridges": nbridge, "q": round(float(q), 4)}}
     stim["stimulus_id"] = hashlib.sha256(json.dumps(
-        ["det", family, n_items, seed, idx, m, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
+        ["det", family, n_items, seed, idx, m, bridges, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
     return stim
 
 

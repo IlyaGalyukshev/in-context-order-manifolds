@@ -168,6 +168,35 @@ def test_coherence_null_always_has_cycle():
         assert _has_cycle(directed, 9), f"null idx={idx} has no cycle (coherent!)"
 
 
+def test_determinacy_bridges_decouple_q_from_difficulty():
+    """E4-fix: at FIXED m, sweeping `bridges` 0..m-1 raises the determined-pair fraction q monotonically
+    to 1.0, while the block substrate (entities/ranks) and per-block reading load stay constant — bridges
+    only ADD cards, never alter the within-block graphs. Twin (incoherent) still admits a cycle."""
+    from icom.generator.bcs import build_determinacy, _has_cycle
+    import re
+    for idx in range(8):
+        qs, orders, ncards = [], [], []
+        for b in (0, 1, 2):
+            s = build_determinacy("s1_size", 16, SEED, idx, VOCAB, m=3, d=4, difficulty="hard", bridges=b)
+            qs.append(s["q_determined"]); orders.append(tuple(s["latent_order"])); ncards.append(len(s["cards"]))
+            assert s["determinacy_bridges"] == b
+        assert qs[0] < qs[1] < qs[2], f"q not strictly increasing with bridges: {qs} (idx={idx})"
+        assert abs(qs[2] - 1.0) < 1e-9, f"m-1 bridges must fully determine the order: q={qs[2]}"
+        assert orders[0] == orders[1] == orders[2], "bridge sweep must share the entity/rank substrate"
+        # bridges only ADD cross-block cards → within-block reading load is identical across the sweep
+        assert ncards[1] == ncards[0] + 1 and ncards[2] == ncards[0] + 2, f"bridges changed card count oddly: {ncards}"
+    z = build_determinacy("s1_size", 16, SEED, 0, VOCAB, m=3, d=4, difficulty="hard", incoherent=True, bridges=1)
+    ent = {e: i for i, e in enumerate(z["latent_order"])}
+    directed = []
+    for c in z["cards"]:
+        if " is smaller than " in c["text"]:
+            a, b = re.match(r"The (\w+) is smaller than the (\w+)\.", c["text"]).groups()
+        else:
+            b, a = re.match(r"The (\w+) is larger than the (\w+)\.", c["text"]).groups()
+        directed.append((ent[a], ent[b]))
+    assert _has_cycle(directed, 16), "determinacy twin must contain a cycle"
+
+
 def test_pairwise_pairs_distinct():
     """Total-order pairwise: no unordered pair is asked more than once (beyond
     its swap), i.e. distinct pairs per bin (no pseudo-replication)."""

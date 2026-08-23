@@ -42,6 +42,11 @@ def main():
     ap.add_argument("--determinacy", default="",
                     help="E4 determinacy dial (comma m values, e.g. '1,2,4'): emit m-fragment stimuli "
                          "(+ twins) sharing the global order — q(m)=determined-pair fraction")
+    ap.add_argument("--det-bridge-m", type=int, default=0,
+                    help="E4-fix: fixed block count for the bridge sweep (per-block difficulty held constant)")
+    ap.add_argument("--det-bridges", default="",
+                    help="E4-fix: comma bridge counts (0..m-1) swept at fixed --det-bridge-m; q rises "
+                         "with bridges while block size / reading load stay constant (decouples q from difficulty)")
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -100,6 +105,18 @@ def main():
                                                   difficulty=diff, incoherent=True)
                             z["difficulty"] = diff
                             fn.write(json.dumps(z) + "\n"); n_null += 1
+                        # E4-fix determinacy: FIXED m, varying bridges (q rises, per-block difficulty constant)
+                        if args.det_bridge_m and args.det_bridges:
+                            from icom.generator.bcs import build_determinacy
+                            for bb in [int(x) for x in args.det_bridges.split(",") if x != ""]:
+                                sd = build_determinacy(fam, N, SEED, idx, vocab, m=args.det_bridge_m,
+                                                       d=args.degree, difficulty=diff, bridges=bb)
+                                sd["difficulty"] = diff
+                                fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                                z = build_determinacy(fam, N, SEED, idx, vocab, m=args.det_bridge_m,
+                                                      d=args.degree, difficulty=diff, incoherent=True, bridges=bb)
+                                z["difficulty"] = diff
+                                fn.write(json.dumps(z) + "\n"); n_null += 1
 
     n_struct = 0
     if args.structures:
