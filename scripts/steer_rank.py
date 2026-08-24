@@ -102,8 +102,9 @@ def fit_axis(acts_dir, model, family, condition, scheme, layer, pca=64):
     def decode(xraw):
         return rg.predict(pc.transform(sc.transform(xraw)))
     from scipy.stats import spearmanr
-    fit_q = abs(spearmanr(X @ v, y)[0] or 0)
-    return v.astype(np.float32), decode, float(np.std(X @ v)), fit_q
+    proj = X @ v
+    fit_q = abs(spearmanr(proj, y)[0] or 0)
+    return v.astype(np.float32), decode, float(np.std(proj)), fit_q, float(np.mean(proj))
 
 
 def main():
@@ -124,6 +125,10 @@ def main():
                          "off-axis effect; the along-axis effect is read against this null + a "
                          "bootstrap CI on the along-minus-offaxis slope).")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--target-mode", action="store_true",
+                    help="E9(a) position-response: SET the entity's axis coord to mean+α·spread (absolute "
+                         "position) instead of adding α·spread → does the answered rank TRACK the imposed "
+                         "position? (--alphas are then z-scores, e.g. -1.5,-0.75,0,0.75,1.5)")
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
@@ -140,7 +145,7 @@ def main():
     stims = [json.loads(l) for l in open(args.stimuli)]
     rng = np.random.default_rng(args.seed)
 
-    state = {"vec": None, "pos": None, "scale": 0.0}
+    state = {"vec": None, "pos": None, "scale": 0.0, "target": None}
 
     def hook(mod, inp, out):
         if state["vec"] is None or not state["pos"]:
@@ -148,8 +153,12 @@ def main():
         h = out[0] if isinstance(out, tuple) else out
         if h.shape[1] <= max(state["pos"]):   # skip KV-cached single-token gen steps
             return out
-        v = torch.tensor(state["vec"], device=h.device, dtype=h.dtype) * state["scale"]
-        h[0, state["pos"], :] += v
+        vu = torch.tensor(state["vec"], device=h.device, dtype=h.dtype)     # unit axis
+        if state["target"] is not None:       # E9(a) position-response: SET coord to an absolute position
+            cur = (h[0, state["pos"], :].float() @ vu.float()).mean()       # current projection on axis
+            h[0, state["pos"], :] += ((float(state["target"]) - cur) * vu).to(h.dtype)
+        else:                                 # additive dose (default α-sweep)
+            h[0, state["pos"], :] += vu * state["scale"]
         return (h,) + out[1:] if isinstance(out, tuple) else h
 
     steer_layers = ([int(x) for x in args.steer_layers.split(",")] if args.steer_layers
@@ -175,7 +184,7 @@ def main():
         fp = fit_axis(args.acts, args.model, family, args.condition, args.scheme, LP)
         if fp is None:
             print(f"{family}: no acts for scheme {args.scheme}"); continue
-        _, decode_peak, _, peak_q = fp
+        _, decode_peak, _, peak_q, _ = fp
         print(f"[{family}/{args.scheme}] peak layer L{LP} (fit rho={peak_q:.2f})", flush=True)
         pool = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
                 and s.get("structure", "total_order") == "total_order"][: (2 if args.smoke else args.n_stim)]
@@ -183,7 +192,7 @@ def main():
             fa = fit_axis(args.acts, args.model, family, args.condition, args.scheme, Ls)
             if fa is None:
                 continue
-            v_along, _, spread, _ = fa
+            v_along, _, spread, _, mean_coord = fa
             # matched-norm OFF-AXIS null: n_offaxis random directions each orthogonalised to the
             # rank axis, unit norm. The off-axis effect distribution IS the null the along-axis
             # effect is judged against (one direction was confirmation-bias-prone).
@@ -205,13 +214,16 @@ def main():
                     continue
                 for direction, vec in directions:
                     for a in alphas:
+                        # E9(a): target-mode SETS the coord to an absolute axis position mean+a·spread
+                        # (answered rank should TRACK a); default mode ADDS a·spread (dose-response).
+                        tgt = (mean_coord + a * spread) if args.target_mode else None
                         enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
-                        state.update(vec=vec, pos=pos, scale=a * spread)
+                        state.update(vec=vec, pos=pos, scale=a * spread, target=tgt)
                         with torch.no_grad():
                             allh = model(**enc, output_hidden_states=True).hidden_states
                         dec = float(decode_peak(allh[LP][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
                         encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
-                        state.update(vec=vec, pos=qpos, scale=a * spread)
+                        state.update(vec=vec, pos=qpos, scale=a * spread, target=tgt)
                         with torch.no_grad():
                             g = model.generate(**encq, max_new_tokens=8, do_sample=False,
                                                pad_token_id=tok.eos_token_id)
@@ -219,9 +231,10 @@ def main():
                         mm = re.search(r"\d{1,3}", ans)
                         rows.append(dict(model=args.model, family=family, scheme=args.scheme, steer_layer=Ls,
                                          peak_layer=LP, stim=s["stimulus_id"], target=target, true_rank=true_rank,
-                                         direction=direction, alpha=a, decoded_rank=round(dec, 3),
+                                         direction=direction, alpha=a, mode=("target" if args.target_mode else "add"),
+                                         decoded_rank=round(dec, 3),
                                          answered=int(mm.group()) if mm else None, raw=ans.strip()[:20]))
-                        state.update(vec=None)
+                        state.update(vec=None, target=None)
             handle.remove()
 
     import pandas as pd

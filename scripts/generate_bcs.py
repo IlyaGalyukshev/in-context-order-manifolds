@@ -131,6 +131,9 @@ def main():
                                                        d=args.degree, difficulty=diff, bridges=bb)
                                 sd["difficulty"] = diff
                                 fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                                for q in make_battery(sd):     # E4-behavioral: accuracy vs bridges (behavior tracks determinacy?)
+                                    q["determinacy_bridges"] = bb
+                                    fq.write(json.dumps(q) + "\n"); n_q += 1
                                 z = build_determinacy(fam, N, SEED, idx, vocab, m=args.det_bridge_m,
                                                       d=args.degree, difficulty=diff, incoherent=True, bridges=bb)
                                 z["difficulty"] = diff
