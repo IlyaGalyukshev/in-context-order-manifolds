@@ -53,6 +53,9 @@ def main():
     ap.add_argument("--redundancy-paraphrase", action="store_true",
                     help="E3: also emit paraphrase variants (same relation, different surface each copy) → "
                          "verbatim(induction) vs paraphrase(abstraction) dissociation at fixed r")
+    ap.add_argument("--redund-pad", default="",
+                    help="E3 length-control (comma pad counts): emit r=1 stimuli padded with N junk DISTRACTOR "
+                         "cards → token length grows, target graph does NOT (is the N-collapse tokens or graph?)")
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -152,6 +155,14 @@ def main():
                                                          difficulty=diff, incoherent=True, paraphrase=para)
                                     z["difficulty"] = diff
                                     fn.write(json.dumps(z) + "\n"); n_null += 1
+                        if args.redund_pad:      # E3 length-control: r=1 + N junk cards (length↑, graph fixed)
+                            from icom.generator.bcs import build_redundancy
+                            for pd in [int(x) for x in args.redund_pad.split(",") if x != ""]:
+                                sd = build_redundancy(fam, N, SEED, idx, vocab, r=1, d=args.degree, difficulty=diff, pad=pd)
+                                sd["difficulty"] = diff; fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                                z = build_redundancy(fam, N, SEED, idx, vocab, r=1, d=args.degree,
+                                                     difficulty=diff, incoherent=True, pad=pd)
+                                z["difficulty"] = diff; fn.write(json.dumps(z) + "\n"); n_null += 1
 
     n_struct = 0
     if args.structures:

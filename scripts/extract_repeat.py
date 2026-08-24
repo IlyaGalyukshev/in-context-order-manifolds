@@ -126,6 +126,7 @@ def main() -> None:
                              "determinacy_bridges": st.get("determinacy_bridges"),  # E4-fix bridge count
                              "redundancy_r": st.get("redundancy_r"),                # E3 repetition count
                              "redundancy_paraphrase": st.get("redundancy_paraphrase"),  # E3 verbatim/paraphrase
+                             "redundancy_pad": st.get("redundancy_pad"),  # E3 length-control junk-card count
                              "card_frac": rec.get("card_frac", 1.0),   # E8 dynamics fraction of cards seen
                              "probe_type": rec.get("probe_type", "neutral"),  # E7-Q ladder rung
                              "store": args.store, "model": args.model}),

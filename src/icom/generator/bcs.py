@@ -409,7 +409,7 @@ def build_determinacy(family: str, n_items: int, seed: int, idx: int, vocab, m: 
 
 def build_redundancy(family: str, n_items: int, seed: int, idx: int, vocab, r: int = 1,
                      d: int = 4, difficulty: str = "hard", incoherent: bool = False,
-                     paraphrase: bool = False):
+                     paraphrase: bool = False, pad: int = 0):
     """E3 — redundancy / emergence dial. Each stated relation (card) is presented `r` times, shuffled.
     Uniform r-duplication preserves EVERY confound gate (degree-regular ×r, first-named⟂rank still 0.5
     via one shared Eulerian orientation, mean-position⟂rank under shuffle). `paraphrase=False` (verbatim)
@@ -446,8 +446,30 @@ def build_redundancy(family: str, n_items: int, seed: int, idx: int, vocab, r: i
             else:
                 text = f"The {later} {inv_s} the {earlier}."; first, second = later, earlier
             cards.append({"lo": e_lo, "hi": e_hi, "text": text, "entity": first, "entity_b": second})
-    order = _decorrelated_order(cards, entities, rng)
+    order = _decorrelated_order(cards, entities, rng)               # decorrelate the TARGET cards only
     cards = [cards[i] for i in order]
+    if pad > 0:                                                     # E3 length-control: junk DISTRACTOR cards
+        used = set(entities)                                        # inflate token length WITHOUT growing the target graph
+        pool_idx = [i for i in range(len(vocab)) if vocab[i] not in used]
+        ndist = int(min(len(pool_idx), max(4, np.ceil(np.sqrt(2 * pad)))))
+        distractors = [vocab[i] for i in rng.choice(pool_idx, size=ndist, replace=False)]
+        junk = []
+        for _ in range(pad):
+            ai, bi = rng.choice(ndist, size=2, replace=False)
+            da, db = distractors[ai], distractors[bi]
+            if bool(rng.integers(2)):
+                text = f"The {da} {surfaces[0][0]} the {db}."; first, second = da, db
+            else:
+                text = f"The {db} {surfaces[0][1]} the {da}."; first, second = db, da
+            junk.append({"lo": -1, "hi": -1, "text": text, "entity": first, "entity_b": second})  # unread (not in latent_order)
+        insert_at = sorted(int(x) for x in rng.integers(0, len(cards) + 1, size=len(junk)))  # random gaps, target order kept
+        merged, ji = [], 0
+        for posn in range(len(cards) + 1):
+            while ji < len(junk) and insert_at[ji] == posn:
+                merged.append(junk[ji]); ji += 1
+            if posn < len(cards):
+                merged.append(cards[posn])
+        cards = merged
     for slot, c in enumerate(cards, 1):
         c["presentation_slot"] = slot; c["latent_rank"] = c["lo"] + 1
     rank_of = {e: rr + 1 for rr, e in enumerate(entities)}
@@ -456,10 +478,11 @@ def build_redundancy(family: str, n_items: int, seed: int, idx: int, vocab, r: i
     line, readout_order = roster_line(entities, rng, rank_of=rank_of)
     prompt += "\n\n" + line
     content_key = hashlib.sha256(json.dumps(
-        ["redund", family, n_items, seed, idx, r, paraphrase, incoherent, entities], sort_keys=True).encode()).hexdigest()[:16]
+        ["redund", family, n_items, seed, idx, r, paraphrase, pad, incoherent, entities], sort_keys=True).encode()).hexdigest()[:16]
     stim = {"family": family, "condition": "shuffle", "n_items": n_items, "seed": seed,
             "relation": rel.name, "degree": d, "balanced": False, "incoherent": incoherent,
             "structure": "total_order", "redundancy_r": int(r), "redundancy_paraphrase": bool(paraphrase),
+            "redundancy_pad": int(pad),
             "latent_order": list(entities),
             "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
                        "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]} for c in cards],
@@ -468,7 +491,7 @@ def build_redundancy(family: str, n_items: int, seed: int, idx: int, vocab, r: i
             "readout_order": readout_order,
             "gate": {"redundancy_r": int(r), "paraphrase": bool(paraphrase)}}
     stim["stimulus_id"] = hashlib.sha256(json.dumps(
-        ["redund", family, n_items, seed, idx, r, paraphrase, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
+        ["redund", family, n_items, seed, idx, r, paraphrase, pad, incoherent, prompt], sort_keys=True).encode()).hexdigest()[:16]
     return stim
 
 

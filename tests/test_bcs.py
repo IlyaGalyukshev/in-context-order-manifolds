@@ -413,3 +413,22 @@ def test_declared_list_shares_order_and_states_it():
     assert all(d2["prompt"].find(c["text"]) >= 0 for c in d2["cards"])
     assert all(d2["prompt"].rfind(f"the {e}") >= roster for e in order)     # readout = roster
     assert all(d2["prompt"].find(f"the {e}") < roster for e in order)       # card = ordered list
+
+
+def test_redundancy_pad_inflates_length_not_graph():
+    """E3 length-control: pad adds junk DISTRACTOR cards (length↑) without changing the target graph —
+    the N ordered entities keep exactly their r=1 relation cards; only unread distractor cards are added."""
+    from icom.generator.bcs import build_redundancy
+    base = build_redundancy("s1_size", 12, SEED, 5, VOCAB, r=1, d=4, difficulty="hard", pad=0)
+    padded = build_redundancy("s1_size", 12, SEED, 5, VOCAB, r=1, d=4, difficulty="hard", pad=40)
+    assert padded["redundancy_pad"] == 40
+    assert len(padded["cards"]) == len(base["cards"]) + 40, "pad must add exactly N junk cards"
+    # target entities' cards (those mentioning ordered entities) are UNCHANGED in count
+    order = set(base["latent_order"])
+    base_real = [c for c in base["cards"] if c["entity"] in order]
+    pad_real = [c for c in padded["cards"] if c["entity"] in order]
+    assert len(base_real) == len(pad_real), "padding must not change the target-entity relation cards"
+    # distractor cards mention entities NOT in the order → unread by the entity-pooler
+    junk = [c for c in padded["cards"] if c["entity"] not in order]
+    assert len(junk) == 40 and all(c["entity_b"] not in order for c in junk)
+    assert base["latent_order"] == padded["latent_order"]  # substrate fixed
