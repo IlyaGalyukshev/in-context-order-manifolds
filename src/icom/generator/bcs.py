@@ -522,6 +522,8 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     edges = (circulant_graph(n_items, d) if balanced
              else regular_graph_with_path(n_items, d, rng, prefer=prefer))
     edge_list = sorted(edges)
+    if declared == "adjacency":                                # E2/D3: only rank-adjacent pairs stated →
+        edge_list = [(i, i + 1) for i in range(n_items - 1)]   # order recoverable in ONE hop (declared-adjacency)
 
     cards = []
     if incoherent:
@@ -587,7 +589,8 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     stim = {
         "family": family, "condition": condition, "n_items": n_items, "seed": seed,
         "relation": rel.name, "degree": d, "balanced": balanced, "incoherent": incoherent,
-        "declared": ("derived_summary" if summary else None),   # E2/D4 tag (None = plain derived D1)
+        "declared": (declared if declared == "adjacency"        # E2/D3 declared-adjacency tag
+                     else ("derived_summary" if summary else None)),   # E2/D4 (None = plain derived D1)
         "latent_order": list(entities),
         "cards": [{"entity": c["entity"], "entity_b": c["entity_b"], "text": c["text"],
                    "latent_rank": c["latent_rank"], "presentation_slot": c["presentation_slot"]}
