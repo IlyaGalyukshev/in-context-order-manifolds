@@ -61,8 +61,9 @@ def get_decoder_layers(model):
 
 
 def mention_token_ids(prompt, entity, tok, which="all"):
-    """token indices of 'The <entity>' mentions. which='all' (name locus, every mention) or
-    'last' (readout locus, the roster mention after all cards)."""
+    """token indices of 'The <entity>' mentions. which='all' (name locus, every mention),
+    'last' (readout locus, the roster mention after all cards), or 'cards' (in-card locus: every
+    mention EXCEPT the trailing roster one — the card-token locus where the steering axis lives)."""
     enc = tok(prompt, return_offsets_mapping=True, add_special_tokens=False)
     offs = enc["offset_mapping"]
     spans = []
@@ -71,7 +72,13 @@ def mention_token_ids(prompt, entity, tok, which="all"):
         spans.append([i for i, (s, e) in enumerate(offs) if s < hi and e > lo and e > s])
     if not spans:
         return []
-    return sorted(set(spans[-1] if which == "last" else [i for sp in spans for i in sp]))
+    if which == "last":
+        sel = spans[-1]
+    elif which == "cards":
+        sel = [i for sp in (spans[:-1] if len(spans) > 1 else spans) for i in sp]  # drop roster mention
+    else:
+        sel = [i for sp in spans for i in sp]
+    return sorted(set(sel))
 
 
 def fit_axis(acts_dir, model, family, condition, scheme, layer, pca=64):

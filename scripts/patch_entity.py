@@ -59,7 +59,9 @@ def main():
     ap.add_argument("--models-config", default="configs/models.yaml")
     ap.add_argument("--model", default="gemma-4-12b-it")
     ap.add_argument("--families", default="s0_zib")
-    ap.add_argument("--scheme", default="readout", help="patch/read locus: name (all mentions) | readout (last)")
+    ap.add_argument("--scheme", default="readout",
+                    help="patch/read locus: readout (roster last mention) | card_mean (in-card mentions, "
+                         "where the steering axis lives) | name (all mentions)")
     ap.add_argument("--condition", default="shuffle")
     ap.add_argument("--patch-layers", default="", help="comma model-layer idxs; default ~40/55/70% depth")
     ap.add_argument("--n-stim", type=int, default=16)
@@ -70,7 +72,7 @@ def main():
     args = ap.parse_args()
 
     spec = resolve_model(args.models_config, args.model)
-    which = "last" if args.scheme == "readout" else "all"
+    which = {"readout": "last", "card_mean": "cards", "name": "all"}.get(args.scheme, "all")
     is_qwen = "qwen" in args.model.lower()
     from transformers import AutoModelForCausalLM, AutoTokenizer
     tok = AutoTokenizer.from_pretrained(spec["hf_id"])
