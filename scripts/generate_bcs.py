@@ -53,6 +53,9 @@ def main():
     ap.add_argument("--redundancy-paraphrase", action="store_true",
                     help="E3: also emit paraphrase variants (same relation, different surface each copy) → "
                          "verbatim(induction) vs paraphrase(abstraction) dissociation at fixed r")
+    ap.add_argument("--declared-pad", type=int, default=0,
+                    help="R15 D2-long: emit a declared-list variant prefixed by N distractor cards "
+                         "(length-dilution vs interference test for the D4 'half' effect)")
     ap.add_argument("--redund-pad", default="",
                     help="E3 length-control (comma pad counts): emit r=1 stimuli padded with N junk DISTRACTOR "
                          "cards → token length grows, target graph does NOT (is the N-collapse tokens or graph?)")
@@ -116,6 +119,13 @@ def main():
                                 fs.write(json.dumps(sd) + "\n"); n_stim += 1
                                 for q in make_battery(sd):
                                     fq.write(json.dumps(q) + "\n"); n_q += 1
+                        if args.declared_pad:                  # R15 D2-long: declared list after N distractor cards
+                            sd = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree, difficulty=diff,
+                                                condition="shuffle", declared="list", declared_pad=args.declared_pad)
+                            sd["difficulty"] = diff
+                            fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                            for q in make_battery(sd):
+                                fq.write(json.dumps(q) + "\n"); n_q += 1
                         # E4 determinacy: m-fragment real + twin (share the global order)
                         for mm in [int(x) for x in args.determinacy.split(",") if x]:
                             from icom.generator.bcs import build_determinacy

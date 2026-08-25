@@ -278,12 +278,16 @@ def _prefer(difficulty):
     return {"easy": "near", "hard": "far"}.get(difficulty, "any")
 
 
-def _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout):
+def _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout,
+                         vocab=None, pad=0):
     """E2 / D2 — declared-list: the full order is STATED, not derived from relations (no transitive
     integration needed). Cards = the ordered list items (for the in-card loci); the roster is still
     rank-decorrelated for a clean readout. NO coherence twin — a declared order is coherent by
     construction (the twin machinery is a derived-mode concept). Content-matched to the derived (D1)
-    cell by sharing entities+order under the same seed."""
+    cell by sharing entities+order under the same seed.
+    `pad` (R15 D2-long): prepend `pad` DISTRACTOR relation cards (about disjoint nonce entities) BEFORE
+    the declared list — tests whether the D4 'half' consolidation is length-DILUTION (D2-long ≈ D4) or
+    interference-SPECIFIC (D2-long ≈ D2)."""
     rank_of = {e: r + 1 for r, e in enumerate(entities)}
     intro = (rel.preamble + "\n\n" if rel.preamble else "") + \
         "The complete order, from earliest to latest, is stated below."
@@ -291,17 +295,29 @@ def _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition
     cards = [{"entity": e, "entity_b": None, "text": f"the {e}",
               "latent_rank": rank_of[e], "presentation_slot": r + 1}
              for r, e in enumerate(entities)]
-    prompt = intro + "\n\n" + list_line
+    dblock = ""
+    if pad > 0 and vocab is not None:                          # R15: distractor prefix (disjoint entities)
+        pool = [v for v in vocab if v not in set(entities)]
+        nd = int(min(len(pool), max(4, np.ceil(np.sqrt(2 * pad)))))
+        dist = [pool[i] for i in rng.choice(len(pool), size=nd, replace=False)]
+        dl = []
+        for _ in range(pad):
+            ai, bi = rng.choice(nd, size=2, replace=False)
+            da, db = dist[ai], dist[bi]
+            dl.append(f"The {da} {rel.fwd} the {db}." if rng.integers(2) else f"The {db} {rel.inv} the {da}.")
+        dblock = "\n".join(dl) + "\n\n"
+    prompt = intro + "\n\n" + dblock + list_line
     readout_order = None
     if readout:
         line, readout_order = roster_line(entities, rng, rank_of=rank_of)
         prompt += "\n\n" + line
     content_key = hashlib.sha256(json.dumps(
-        ["declared_list", family, n_items, seed, idx, entities], sort_keys=True).encode()).hexdigest()[:16]
+        ["declared_list", family, n_items, seed, idx, pad, entities], sort_keys=True).encode()).hexdigest()[:16]
     stim = {
         "family": family, "condition": condition, "n_items": n_items, "seed": seed,
         "relation": rel.name, "degree": d, "balanced": False, "incoherent": False,
-        "declared": "list", "structure": "total_order", "latent_order": list(entities),
+        "declared": ("list_long" if pad else "list"), "declared_pad": int(pad),
+        "structure": "total_order", "latent_order": list(entities),
         "cards": cards, "prompt": prompt, "content_key": content_key,
         "entity_ranks": {e: int(rank_of[e]) for e in entities},
         "entity_slots": {e: int(rank_of[e]) for e in entities},
@@ -499,7 +515,7 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
                    condition: str = "shuffle", incoherent: bool = False,
                    difficulty: str = None, readout: bool = True, declared: str = None,
-                   summary: bool = False):
+                   summary: bool = False, declared_pad: int = 0):
     """One BCS stimulus. family is a RELATIONS key. Returns a dict.
 
     difficulty overrides `balanced`: 'easy' = banded circulant (order recoverable
@@ -516,8 +532,9 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     rel = RELATIONS[family]
     rng = rng_for(seed, "bcs", family, n_items, idx, d, balanced)
     entities = [vocab[i] for i in rng.choice(len(vocab), size=n_items, replace=False)]
-    if declared == "list":                                     # E2/D2: shares entities+order with D1
-        return _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout)
+    if declared in ("list", "list_long"):                      # E2/D2 (+R15 D2-long): shares entities+order with D1
+        return _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout,
+                                    vocab=vocab, pad=declared_pad)
 
     edges = (circulant_graph(n_items, d) if balanced
              else regular_graph_with_path(n_items, d, rng, prefer=prefer))

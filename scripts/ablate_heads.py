@@ -67,6 +67,42 @@ def induction_scores(model, tok, device, seq_len=40, seed=0):
     return scores
 
 
+@torch.no_grad()
+def prev_token_scores(model, tok, device, seq_len=60, seed=0):
+    """[n_layers, n_heads] PREV-TOKEN score: mean attention from token i to token i−1 on a random
+    sequence (the R13 second shoulder — previous-token heads are the other mechanism the induction
+    critique invokes; the induction diagnostic looks BACK to the match, this looks one step back)."""
+    rng = np.random.default_rng(seed)
+    vocab = min(tok.vocab_size, 20000)
+    seq = rng.integers(5, vocab, size=seq_len).tolist()
+    ids = torch.tensor([seq], device=device)
+    out = model(ids, output_attentions=True)
+    att = out.attentions
+    L, H = len(att), att[0].shape[1]
+    scores = np.zeros((L, H))
+    idx = np.arange(1, seq_len)
+    for li in range(L):
+        A = att[li][0].float().cpu().numpy()                    # [H, T, T]
+        scores[li] = A[:, idx, idx - 1].mean(axis=1)            # attention i → i−1
+    return scores
+
+
+@torch.no_grad()
+def induction_copy_acc(model, tok, device, seq_len=40, seed=1):
+    """MANIPULATION CHECK: fraction of 2nd-copy tokens the model predicts correctly on a repeated random
+    sequence (induction copying). Called with the ablation hooks active/inactive — if the ablated heads
+    carry induction, this drops under induction-ablation. (o_proj-slice ablation leaves attention weights
+    intact, so the FUNCTIONAL copy behavior — not the raw attention score — is the valid check.)"""
+    rng = np.random.default_rng(seed)
+    vocab = min(tok.vocab_size, 20000)
+    seq = rng.integers(5, vocab, size=seq_len).tolist()
+    ids = torch.tensor([seq + seq], device=device)
+    pred = model(ids).logits[0][:-1].argmax(-1).cpu().numpy()   # next-token prediction
+    tgt = np.array((seq + seq)[1:])
+    reg = slice(seq_len - 1, 2 * seq_len - 1)                   # 2nd-copy region (induction-predictable)
+    return float((pred[reg] == tgt[reg]).mean())
+
+
 def make_ablation(layers, head_dim, ablate_set):
     """Register o_proj forward-pre-hooks that zero the ablated (layer,head) slices when state['on'].
     Returns (state, handles)."""
@@ -144,10 +180,15 @@ def main():
     flat = [(li, h, scores[li, h]) for li in range(scores.shape[0]) for h in range(scores.shape[1])]
     flat.sort(key=lambda t: -t[2])
     top = set((li, h) for li, h, _ in flat[:args.topk])
+    pscores = prev_token_scores(model, tok, args.device, seed=args.seed)          # R13 prev-token shoulder
+    pflat = sorted([(li, h, pscores[li, h]) for li in range(pscores.shape[0]) for h in range(pscores.shape[1])],
+                   key=lambda t: -t[2])
+    ptop = set((li, h) for li, h, _ in pflat[:args.topk])
     rng = np.random.default_rng(args.seed)
     allhh = [(li, h) for li in range(scores.shape[0]) for h in range(scores.shape[1])]
     rand = set(allhh[i] for i in rng.choice(len(allhh), args.topk, replace=False))
-    print(f"top induction heads (score): {[(li, h, round(float(s),3)) for li,h,s in flat[:5]]}", flush=True)
+    print(f"top induction heads: {[(li, h, round(float(s),3)) for li,h,s in flat[:5]]}", flush=True)
+    print(f"top prev-token heads: {[(li, h, round(float(s),3)) for li,h,s in pflat[:5]]}", flush=True)
 
     def _load(path):                                          # filter to (family, N) BEFORE limiting —
         S = [json.loads(l) for l in open(path)]               # else --limit can grab only the wrong-N block
@@ -163,21 +204,34 @@ def main():
         state["on"] = False
         return dict(tag=tag, real=round(r, 3), twin=round(t, 3), gap=round(r - t, 3))
 
+    copy0 = induction_copy_acc(model, tok, args.device)                            # intact copy accuracy
     st_ind, h_ind = make_ablation(layers, head_dim, top)
     intact = gap(st_ind, "intact")
     abl_ind = gap(st_ind, "ablate_induction")
+    st_ind["on"] = True; copy_ind = induction_copy_acc(model, tok, args.device); st_ind["on"] = False
     for h in h_ind:
+        h.remove()
+    st_prev, h_prev = make_ablation(layers, head_dim, ptop)                         # R13: prev-token shoulder
+    abl_prev = gap(st_prev, "ablate_prevtoken")
+    st_prev["on"] = True; copy_prev = induction_copy_acc(model, tok, args.device); st_prev["on"] = False
+    for h in h_prev:
         h.remove()
     st_rnd, h_rnd = make_ablation(layers, head_dim, rand)
     abl_rnd = gap(st_rnd, "ablate_random")
     for h in h_rnd:
         h.remove()
 
+    # MANIPULATION CHECK: induction-copy accuracy must fall under induction-ablation (heads are load-bearing)
+    manip = dict(copy_intact=round(copy0, 3), copy_ablate_induction=round(copy_ind, 3),
+                 copy_ablate_prevtoken=round(copy_prev, 3),
+                 induction_ablation_worked=bool(copy_ind < copy0 - 0.05))
     res = dict(model=args.model, family=args.family, n_items=args.n_items, layer=layer,
-               topk=args.topk, conditions=[intact, abl_ind, abl_rnd])
+               topk=args.topk, conditions=[intact, abl_ind, abl_prev, abl_rnd], manipulation=manip)
     for c in res["conditions"]:
         print(f"{args.model} {args.family} N{args.n_items} L{layer} {c['tag']:16s} | "
               f"real={c['real']} twin={c['twin']} gap={c['gap']}", flush=True)
+    print(f"MANIP-CHECK copy-acc: intact={manip['copy_intact']} abl-ind={manip['copy_ablate_induction']} "
+          f"abl-prev={manip['copy_ablate_prevtoken']} | induction-ablation worked={manip['induction_ablation_worked']}", flush=True)
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(res, indent=2))
