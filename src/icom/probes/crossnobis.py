@@ -112,9 +112,16 @@ def ring_rdm(ranks: np.ndarray, N: int) -> np.ndarray:
     return np.minimum(dif, N - dif)
 
 
-def whitened_rsa(rdm: np.ndarray, ideal: np.ndarray, method: str = "spearman") -> float:
-    """RSA between a (crossnobis) RDM and an ideal RDM, over the upper triangle."""
+def whitened_rsa(rdm: np.ndarray, ideal: np.ndarray, method: str = "spearman", mask=None) -> float:
+    """RSA between a (crossnobis) RDM and an ideal RDM, over the upper triangle. `mask` (a [n,n] bool
+    matrix) restricts the RSA to a PAIR SUBSET — e.g. cross-block pairs (R9/E4 go-no-go) or multi-hop
+    pairs (R8/E1 stratification): only entries with mask[i,j]=True enter the correlation."""
     iu = np.triu_indices(rdm.shape[0], 1)
+    if mask is not None:
+        keep = np.asarray(mask)[iu].astype(bool)
+        if keep.sum() < 3:
+            return float("nan")
+        iu = (iu[0][keep], iu[1][keep])
     a, b = rdm[iu], ideal[iu]
     if np.std(a) < 1e-12 or np.std(b) < 1e-12:
         return float("nan")
