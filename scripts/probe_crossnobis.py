@@ -61,7 +61,8 @@ def load_repeat(acts, model, family, condition, scheme, structure=None, is_null=
             continue
         if probe_type is not None and m.get("probe_type", "neutral") != probe_type:  # E7-Q: ladder rung
             continue
-        base = {"ranks": z["ranks"].astype(int), "N": int(m["n_items"])}
+        base = {"ranks": z["ranks"].astype(int), "N": int(m["n_items"]),
+                "content_key": m.get("content_key"), "entities": json.loads(str(z["entities"]))}
         if f"rdm_{scheme}" in z.files:
             recs.append({"mode": "rdm", "RDM": z[f"rdm_{scheme}"].astype(np.float64), **base})
         elif scheme in z.files:
@@ -104,25 +105,70 @@ def _layer_mean(recs, layer, ideal, n_splits, seed):
     return (float(np.mean(v)), len(v)) if v else (float("nan"), 0)
 
 
-def _peak_rdms(recs, layer, n_splits, seed):
-    """Precompute (interior crossnobis RDM, ranks, N) per stimulus at `layer` — invariant to the
-    rank-label permutation and to stimulus resampling, so the null/bootstrap reuse these (cheap)."""
+def _pair_mask(ranks, N, subset, m=3, edges=None):
+    """[n,n] bool over interior entities selecting a PAIR SUBSET (R9/R8). `ranks` = interior ranks (1..N):
+      cross_block / within_block — blocks = np.array_split(arange(N), m) (E4 determinacy structure);
+      distant / adjacent — |Δrank| ≥ 3 / == 1 (rank-distance strata);
+      multihop / onehop — graph distance > 1 / == 1 in the STATED relation graph (needs `edges`, R8)."""
+    n = len(ranks)
+    if subset in ("multihop", "onehop") and edges is not None:
+        import collections
+        adj = collections.defaultdict(set)
+        for a, b in edges:
+            adj[a].add(b); adj[b].add(a)
+        dist = np.full((N, N), 99, int)                            # BFS hop-distance over full-rank graph
+        for s in range(N):
+            dist[s, s] = 0; q = [s]
+            while q:
+                u = q.pop(0)
+                for w in adj[u]:
+                    if dist[s, w] == 99:
+                        dist[s, w] = dist[s, u] + 1; q.append(w)
+        ri = ranks - 1
+        D = dist[np.ix_(ri, ri)]
+        return (D > 1) if subset == "multihop" else (D == 1)
+    blocks = np.zeros(N, int)
+    for bi, blk in enumerate(np.array_split(np.arange(N), m)):
+        blocks[blk] = bi
+    br = blocks[ranks - 1]
+    if subset == "cross_block":
+        return br[:, None] != br[None, :]
+    if subset == "within_block":
+        return br[:, None] == br[None, :]
+    dr = np.abs(ranks[:, None] - ranks[None, :])
+    if subset == "adjacent":
+        return dr == 1
+    if subset == "distant":
+        return dr >= 3
+    return np.ones((n, n), bool)
+
+
+def _peak_rdms(recs, layer, n_splits, seed, subset=None, m=3, edges_by=None):
+    """Precompute (interior crossnobis RDM, ranks, N, mask) per stimulus at `layer` — invariant to the
+    rank-label permutation and to stimulus resampling, so the null/bootstrap reuse these (cheap).
+    `subset` (R9/R8) attaches a pair-subset mask; edges_by maps stim index → stated-relation edges."""
     out = []
-    for r in recs:
+    for idx, r in enumerate(recs):
         ir = _interior_rdm(r, layer, n_splits, seed)
         if ir is not None:
-            out.append(ir)
+            rdm, ranks, N = ir
+            mask = None
+            if subset:
+                mask = _pair_mask(ranks, N, subset, m=m, edges=(edges_by or {}).get(idx))
+            out.append((rdm, ranks, N, mask))
     return out
 
 
 def _rsa_from(rdms, ideal, ranks_list=None):
     """Mean whitened-RSA over precomputed RDMs; `ranks_list` overrides each stimulus's ranks
-    (for the permutation null)."""
+    (for the permutation null). Each rdm carries an optional pair-subset `mask` (R9/R8)."""
     v = []
-    for i, (rdm, ranks, N) in enumerate(rdms):
+    for i, rec in enumerate(rdms):
+        rdm, ranks, N = rec[0], rec[1], rec[2]
+        mask = rec[3] if len(rec) > 3 else None
         rk = ranks if ranks_list is None else ranks_list[i]
         idl = ring_rdm(rk, N) if ideal == "ring" else line_rdm(rk)
-        x = whitened_rsa(rdm, idl)
+        x = whitened_rsa(rdm, idl, mask=mask)
         if x == x:
             v.append(x)
     return float(np.mean(v)) if v else float("nan")
@@ -151,9 +197,20 @@ def _r(x, nd=3):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), nd)
 
 
+def _edges_by(recs, stim_edges):
+    """map each rec index → its stated-relation edges (rank-space), via content_key + entity order."""
+    out = {}
+    for i, r in enumerate(recs):
+        e = stim_edges.get(r.get("content_key"))
+        if e is not None:
+            out[i] = e
+    return out
+
+
 def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_perm, seed,
              n_items=None, declared="__any__", det_m=None, det_bridges=None, layer=None,
-             redund_r=None, redund_para=None, card_frac=None, probe_type=None, redund_pad=None):
+             redund_r=None, redund_para=None, card_frac=None, probe_type=None, redund_pad=None,
+             subset=None, block_m=3, stim_edges=None):
     real = load_repeat(acts, model, family, condition, scheme, is_null=False, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges, redund_r=redund_r, redund_para=redund_para, card_frac=card_frac, probe_type=probe_type, redund_pad=redund_pad)
     twin = load_repeat(acts, model, family, condition, scheme, is_null=True, n_items=n_items, declared=declared, det_m=det_m, det_bridges=det_bridges, redund_r=redund_r, redund_para=redund_para, card_frac=card_frac, probe_type=probe_type, redund_pad=redund_pad)
     if not real:
@@ -164,9 +221,11 @@ def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_
         peak = int(layer); ho = argmax = _layer_mean(real, peak, ideal, n_splits, seed)[0]
     else:
         ho, peak, argmax = _held_out_peak(real, L, ideal, n_splits, seed)
+    eb_r = _edges_by(real, stim_edges) if (subset and stim_edges) else None
+    eb_t = _edges_by(twin, stim_edges) if (subset and stim_edges) else None
     # precompute the peak-layer crossnobis RDMs ONCE (invariant to rank-perm / stimulus-resample)
-    rdms_real = _peak_rdms(real, peak, n_splits, seed)
-    rdms_twin = _peak_rdms(twin, peak, n_splits, seed) if twin else []
+    rdms_real = _peak_rdms(real, peak, n_splits, seed, subset=subset, m=block_m, edges_by=eb_r)
+    rdms_twin = _peak_rdms(twin, peak, n_splits, seed, subset=subset, m=block_m, edges_by=eb_t) if twin else []
     rsa_real = _rsa_from(rdms_real, ideal)
     rsa_twin = _rsa_from(rdms_twin, ideal) if rdms_twin else float("nan")
 
@@ -174,7 +233,7 @@ def run_cell(acts, model, family, condition, scheme, ideal, n_splits, n_boot, n_
     rng = np.random.default_rng(seed)
     null = []
     for _ in range(n_perm):
-        perm = [rng.permutation(rk) for (_, rk, _) in rdms_real]
+        perm = [rng.permutation(rec[1]) for rec in rdms_real]
         null.append(_rsa_from(rdms_real, ideal, ranks_list=perm))
     null = np.array([x for x in null if x == x])
     p = (1 + int((null >= rsa_real).sum())) / (1 + len(null)) if len(null) else None
@@ -228,6 +287,11 @@ def main():
                     help="E3 filter: 1=paraphrase, 0=verbatim (omit=any)")
     ap.add_argument("--card-frac", type=float, default=None, help="E8 filter: dynamics fraction of cards seen")
     ap.add_argument("--redund-pad", type=int, default=None, help="E3 length-control filter: junk-card pad count")
+    ap.add_argument("--pair-subset", default=None,
+                    choices=["cross_block", "within_block", "distant", "adjacent", "multihop", "onehop"],
+                    help="R9/R8: restrict whitened-RSA to a pair subset (cross_block=E4 go/no-go; multihop=E1 strat)")
+    ap.add_argument("--block-m", type=int, default=3, help="R9 block count for cross_block/within_block masks")
+    ap.add_argument("--stimuli", default=None, help="R8: stimuli.jsonl for multihop/onehop edge graph")
     ap.add_argument("--probe-type", default=None, choices=["neutral", "order", "nonorder"],
                     help="E7-Q filter: assembly-ladder rung")
     ap.add_argument("--seed", type=int, default=0)
@@ -235,6 +299,17 @@ def main():
     args = ap.parse_args()
 
     decl = None if args.declared == "none" else args.declared   # meta stores derived as JSON null
+    stim_edges = None
+    if args.stimuli and args.pair_subset in ("multihop", "onehop"):   # R8: build content_key → rank-space edges
+        stim_edges = {}
+        for line in open(args.stimuli):
+            s = json.loads(line)
+            er = s.get("entity_ranks")
+            if not er:
+                continue
+            edges = [(er[c["entity"]] - 1, er[c["entity_b"]] - 1) for c in s.get("cards", [])
+                     if c.get("entity") in er and c.get("entity_b") in er]
+            stim_edges[s.get("content_key")] = edges
     results = []
     for family in args.families.split(","):
         try:
@@ -242,7 +317,8 @@ def main():
                          args.n_splits, args.n_boot, args.n_perm, args.seed, n_items=args.n_items,
                          declared=decl, det_m=args.det_m, det_bridges=args.det_bridges, layer=args.layer,
                          redund_r=args.redund_r, redund_para=args.redund_para, card_frac=args.card_frac,
-                         probe_type=args.probe_type, redund_pad=args.redund_pad)
+                         probe_type=args.probe_type, redund_pad=args.redund_pad,
+                         subset=args.pair_subset, block_m=args.block_m, stim_edges=stim_edges)
         except Exception as e:
             print(f"{args.model} {family}/{args.scheme}: ERROR {e}", flush=True)
             continue
