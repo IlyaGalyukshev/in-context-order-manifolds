@@ -111,7 +111,7 @@ def main() -> None:
                 }) + "\n")
             f.flush()
             n_done += 1
-            if n_done % args.sample_every == 1:
+            if raws and n_done % args.sample_every == 1:        # guard: empty raws (e.g. all-filtered cell) must not crash the run
                 ex = raws[0]
                 q0 = next(q for q in qs if q["qid"] == ex["qid"])
                 print(f"[sample {st['family']}/{st['condition']}] Q: {q0['text'][:80]}\n"
