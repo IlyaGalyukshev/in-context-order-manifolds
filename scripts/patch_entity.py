@@ -63,6 +63,8 @@ def main():
                     help="patch/read locus: readout (roster last mention) | card_mean (in-card mentions, "
                          "where the steering axis lives) | name (all mentions)")
     ap.add_argument("--condition", default="shuffle")
+    ap.add_argument("--declared", default="__any__",
+                    help="R14 filter: '__any__' all, 'none' derived(D1), 'list' declared(D2)")
     ap.add_argument("--patch-layers", default="", help="comma model-layer idxs; default ~40/55/70% depth")
     ap.add_argument("--n-stim", type=int, default=16)
     ap.add_argument("--n-pairs", type=int, default=3)
@@ -102,11 +104,14 @@ def main():
         h[0, state["pos"], :] = state["donor"].to(h.dtype)   # REPLACE A's stream with the donor entity's
         return (h,) + out[1:] if isinstance(out, tuple) else h
 
+    want_decl = (None if args.declared == "none" else args.declared) if args.declared != "__any__" else "__any__"
     rows = []
     for family in args.families.split(","):
         pool = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
                 and s.get("structure", "total_order") == "total_order"
-                and not bool(s.get("incoherent", False))][: (2 if args.smoke else args.n_stim)]
+                and not bool(s.get("incoherent", False))
+                and (want_decl == "__any__" or s.get("declared") == want_decl)   # R14: D2-declared vs D1-derived
+                ][: (2 if args.smoke else args.n_stim)]
         for s in pool:
             block = chat(s["prompt"], gen=False)
             enc_b = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
