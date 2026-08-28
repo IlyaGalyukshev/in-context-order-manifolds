@@ -1,0 +1,20 @@
+[
+  {
+    "model": "qwen3-4b",
+    "family": "s0_zib",
+    "n_items": 12,
+    "scheme": "card_mean",
+    "n_comp": 6,
+    "n_real": 110,
+    "n_twin": 110,
+    "peak_layer": 21,
+    "cpca_decode": 0.727,
+    "pca_decode": 0.446,
+    "cpca_minus_pca": 0.281,
+    "diff_ci": [
+      0.065,
+      0.347
+    ],
+    "cpca_beats_pca": true
+  }
+]

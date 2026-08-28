@@ -1,0 +1,34 @@
+[
+  {
+    "model": "qwen3-4b",
+    "family": "s0_zib",
+    "condition": "shuffle",
+    "scheme": "card_mean",
+    "ideal": "line",
+    "n_real": 110,
+    "n_twin": 110,
+    "peak_layer": 18,
+    "peak_frac": 0.5,
+    "rsa_real": 0.354,
+    "rsa_real_ci": [
+      0.3,
+      0.402
+    ],
+    "rsa_heldout": 0.374,
+    "rsa_argmax": 0.379,
+    "rsa_twin": 0.173,
+    "rsa_twin_ci": [
+      0.131,
+      0.222
+    ],
+    "increment": 0.181,
+    "increment_ci": [
+      0.112,
+      0.247
+    ],
+    "sig_vs_twin": true,
+    "null95": 0.043,
+    "p": 0.005,
+    "n_items": 12
+  }
+]

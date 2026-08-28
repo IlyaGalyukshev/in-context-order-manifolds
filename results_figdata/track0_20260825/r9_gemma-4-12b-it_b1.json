@@ -1,0 +1,34 @@
+[
+  {
+    "model": "gemma-4-12b-it",
+    "family": "s1_size",
+    "condition": "shuffle",
+    "scheme": "card_mean",
+    "ideal": "line",
+    "n_real": 80,
+    "n_twin": 80,
+    "peak_layer": 44,
+    "peak_frac": 0.917,
+    "rsa_real": 0.014,
+    "rsa_real_ci": [
+      -0.032,
+      0.063
+    ],
+    "rsa_heldout": 0.338,
+    "rsa_argmax": 0.341,
+    "rsa_twin": 0.035,
+    "rsa_twin_ci": [
+      -0.011,
+      0.081
+    ],
+    "increment": -0.021,
+    "increment_ci": [
+      -0.094,
+      0.052
+    ],
+    "sig_vs_twin": false,
+    "null95": 0.027,
+    "p": 0.1791,
+    "n_items": 16
+  }
+]

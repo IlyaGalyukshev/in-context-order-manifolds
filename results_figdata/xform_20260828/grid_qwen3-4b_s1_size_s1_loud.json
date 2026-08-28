@@ -1,0 +1,20 @@
+[
+  {
+    "model": "qwen3-4b",
+    "family": "s1_size|s1_loud",
+    "scheme": "card_mean",
+    "n_stim": 20,
+    "winner_frac": {
+      "line": 0.15,
+      "ring": 0.1,
+      "2block": 0.25,
+      "grid": 0.5
+    },
+    "mean_rsa": {
+      "line": 0.137,
+      "ring": 0.136,
+      "2block": 0.063,
+      "grid": 0.194
+    }
+  }
+]

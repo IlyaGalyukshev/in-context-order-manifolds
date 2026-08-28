@@ -1,0 +1,20 @@
+[
+  {
+    "model": "olmo3-7b-inst",
+    "family": "s0_zib",
+    "n_items": 12,
+    "scheme": "card_mean",
+    "n_comp": 6,
+    "n_real": 110,
+    "n_twin": 110,
+    "peak_layer": 16,
+    "cpca_decode": 0.778,
+    "pca_decode": 0.589,
+    "cpca_minus_pca": 0.19,
+    "diff_ci": [
+      0.063,
+      0.254
+    ],
+    "cpca_beats_pca": true
+  }
+]

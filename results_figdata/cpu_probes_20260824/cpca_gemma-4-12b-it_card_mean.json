@@ -1,0 +1,20 @@
+[
+  {
+    "model": "gemma-4-12b-it",
+    "family": "s0_zib",
+    "n_items": 12,
+    "scheme": "card_mean",
+    "n_comp": 6,
+    "n_real": 110,
+    "n_twin": 110,
+    "peak_layer": 28,
+    "cpca_decode": 0.804,
+    "pca_decode": 0.785,
+    "cpca_minus_pca": 0.019,
+    "diff_ci": [
+      -0.013,
+      0.023
+    ],
+    "cpca_beats_pca": false
+  }
+]

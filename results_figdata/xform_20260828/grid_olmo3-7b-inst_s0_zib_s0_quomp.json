@@ -1,0 +1,20 @@
+[
+  {
+    "model": "olmo3-7b-inst",
+    "family": "s0_zib|s0_quomp",
+    "scheme": "card_mean",
+    "n_stim": 20,
+    "winner_frac": {
+      "line": 0.25,
+      "ring": 0.15,
+      "2block": 0.25,
+      "grid": 0.35
+    },
+    "mean_rsa": {
+      "line": 0.095,
+      "ring": 0.091,
+      "2block": 0.067,
+      "grid": 0.059
+    }
+  }
+]

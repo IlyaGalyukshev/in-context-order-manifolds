@@ -1,0 +1,16 @@
+[
+  {
+    "model": "qwen3-4b",
+    "family": "s0_zib",
+    "scheme": "card_mean",
+    "n_stim": 20,
+    "winner_frac": {
+      "line": 0.05,
+      "2block": 0.95
+    },
+    "mean_rsa": {
+      "line": 0.128,
+      "2block": 0.29
+    }
+  }
+]

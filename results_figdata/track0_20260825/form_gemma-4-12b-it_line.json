@@ -1,0 +1,18 @@
+[
+  {
+    "model": "gemma-4-12b-it",
+    "family": "s0_zib",
+    "scheme": "card_mean",
+    "n_stim": 110,
+    "winner_frac": {
+      "line": 0.282,
+      "ring": 0.282,
+      "2block": 0.436
+    },
+    "mean_rsa": {
+      "line": 0.36,
+      "ring": 0.359,
+      "2block": 0.336
+    }
+  }
+]

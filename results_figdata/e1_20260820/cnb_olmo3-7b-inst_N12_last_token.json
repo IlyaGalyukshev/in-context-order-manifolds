@@ -1,0 +1,34 @@
+[
+  {
+    "model": "olmo3-7b-inst",
+    "family": "s0_zib",
+    "condition": "shuffle",
+    "scheme": "last_token",
+    "ideal": "line",
+    "n_real": 110,
+    "n_twin": 110,
+    "peak_layer": 15,
+    "peak_frac": 0.469,
+    "rsa_real": 0.167,
+    "rsa_real_ci": [
+      0.133,
+      0.2
+    ],
+    "rsa_heldout": 0.167,
+    "rsa_argmax": 0.167,
+    "rsa_twin": 0.192,
+    "rsa_twin_ci": [
+      0.156,
+      0.234
+    ],
+    "increment": -0.025,
+    "increment_ci": [
+      -0.077,
+      0.023
+    ],
+    "sig_vs_twin": false,
+    "null95": 0.029,
+    "p": 0.0066,
+    "n_items": 12
+  }
+]

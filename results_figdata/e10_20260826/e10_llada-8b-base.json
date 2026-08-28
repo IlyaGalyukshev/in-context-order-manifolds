@@ -1,0 +1,34 @@
+[
+  {
+    "model": "llada-8b-base",
+    "family": "s0_quomp",
+    "condition": "shuffle",
+    "scheme": "card_mean",
+    "ideal": "line",
+    "n_real": 100,
+    "n_twin": 100,
+    "peak_layer": 0,
+    "peak_frac": 0.0,
+    "rsa_real": 0.321,
+    "rsa_real_ci": [
+      0.274,
+      0.365
+    ],
+    "rsa_heldout": 0.302,
+    "rsa_argmax": 0.321,
+    "rsa_twin": 0.171,
+    "rsa_twin_ci": [
+      0.122,
+      0.211
+    ],
+    "increment": 0.151,
+    "increment_ci": [
+      0.085,
+      0.208
+    ],
+    "sig_vs_twin": true,
+    "null95": 0.03,
+    "p": 0.0066,
+    "n_items": 12
+  }
+]

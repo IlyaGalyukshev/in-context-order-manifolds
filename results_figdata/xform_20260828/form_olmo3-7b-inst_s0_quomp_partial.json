@@ -1,0 +1,16 @@
+[
+  {
+    "model": "olmo3-7b-inst",
+    "family": "s0_quomp",
+    "scheme": "card_mean",
+    "n_stim": 20,
+    "winner_frac": {
+      "line": 0.0,
+      "2block": 1.0
+    },
+    "mean_rsa": {
+      "line": 0.151,
+      "2block": 0.352
+    }
+  }
+]
