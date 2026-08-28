@@ -155,6 +155,10 @@ diffusion:
   # All HF-verified 2026-08 (weights released, bf16 safetensors -> load fp16 on V100).
   dream-7b-inst: { hf_id: Dream-org/Dream-v0-Instruct-7B, dtype: float16, arch: diffusion, note: "HF-verified; init from AR Qwen-2.5-7B -> the AR-vs-diffusion control (Apache-2.0)" }
   qwen2.5-7b-inst: { hf_id: Qwen/Qwen2.5-7B-Instruct, dtype: float16, note: "E10 AR control — same weight origin as Dream-7B (autoregressive)" }
+  dream-7b-base:   { hf_id: Dream-org/Dream-v0-Base-7B, dtype: float16, arch: diffusion, role: base, note: "E10 base-vs-base: EXACT shared init with Qwen2.5-7B-Base — no post-training confound (§6.19 gap fixed)" }
+  qwen2.5-7b-base: { hf_id: Qwen/Qwen2.5-7B, dtype: float16, role: base, note: "E10 AR base control — exact shared init with Dream-v0-Base" }
+  llada-8b-inst:   { hf_id: GSAI-ML/LLaDA-8B-Instruct, dtype: float16, arch: diffusion, note: "E10 2nd diffusion LM — trained FROM SCRATCH (no AR ancestor); paired w/ same-scale AR baseline only" }
+  llada-8b-base:   { hf_id: GSAI-ML/LLaDA-8B-Base, dtype: float16, arch: diffusion, role: base, note: "E10 LLaDA base (from-scratch diffusion)" }
   dream-7b-base: { hf_id: Dream-org/Dream-v0-Base-7B,     dtype: float16, arch: diffusion, note: "HF-verified; base sibling" }
   llada-8b-inst: { hf_id: GSAI-ML/LLaDA-8B-Instruct,      dtype: float16, arch: diffusion, note: "HF-verified; second diffusion family (from scratch); LICENSE: MIT" }
   llada-moe:     { hf_id: inclusionAI/LLaDA-MoE-7B-A1B-Instruct, dtype: float16, arch: diffusion_moe, note: "HF-verified; MoE diffusion 7B/1.4B-active (Apache-2.0)" }
