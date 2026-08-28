@@ -11,8 +11,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from icom.generator.bcs import (build_stimulus, circulant_graph, eulerian_orientation,
-                                 regular_graph_with_path, _degree, _unique_topo)
+from icom.generator.bcs import (build_stimulus, circulant_graph, circulant_graph_gaps,
+                                 eulerian_orientation, regular_graph_with_path, _degree, _unique_topo)
 
 SEED = 20260724
 POOL = Path(__file__).resolve().parents[1] / "data" / "pools" / "entities_v1.json"
@@ -432,3 +432,81 @@ def test_redundancy_pad_inflates_length_not_graph():
     junk = [c for c in padded["cards"] if c["entity"] not in order]
     assert len(junk) == 40 and all(c["entity_b"] not in order for c in junk)
     assert base["latent_order"] == padded["latent_order"]  # substrate fixed
+
+
+# ------------------------------------------------------------------ HOP-DIAL (derivation-depth dose-response)
+@pytest.mark.parametrize("N", [9, 12, 16])
+def test_hopdial_gates_and_determinacy(N):
+    """Every hop-dial arm C_n({1,g}) must be determinate and pass ALL confound gates (the whole point:
+    an arm-to-arm geometry change isolates hop-depth, not a role/frequency artifact)."""
+    reaches = [g for g in (2, 3, 4) if g < N / 2]
+    for g in reaches:
+        for idx in range(6):
+            s = build_stimulus("s0_zib", N, SEED, idx, VOCAB, difficulty="hard",
+                               condition="shuffle", hop_gaps=[1, g])
+            gate = s["gate"]
+            assert gate["degree_regular"], f"N={N} g={g}: not degree-regular"
+            assert gate["unique_total_order"], f"N={N} g={g}: order not determinate"
+            assert abs(gate["corr_rank_mentions"]) < 1e-9, "mention-freq must be ⟂ rank"
+            assert abs(gate["corr_rank_subjfrac"]) < 1e-9, "first-named must be ⟂ rank (Eulerian)"
+            assert abs(gate["corr_rank_slot"]) <= 0.20, "position must be ~⟂ rank (shuffle)"
+            assert s["hop_reach"] == g and s["hop_gaps"] == [1, g]
+
+
+def test_hopdial_fixed_cards_across_reach():
+    """The dial's identifying property: at fixed degree the CARD COUNT (and mention-freq, token load)
+    is IDENTICAL across reach arms — so only derivation depth changes. Reach=1 is the deg-2 reference."""
+    for N in (9, 12, 16):
+        counts = {}
+        for g in (2, 3, 4):
+            if g >= N / 2:
+                continue
+            s = build_stimulus("s0_zib", N, SEED, 0, VOCAB, difficulty="hard",
+                               condition="shuffle", hop_gaps=[1, g])
+            counts[g] = len(s["cards"])
+        assert len(set(counts.values())) == 1, f"N={N}: card count differs across reach: {counts}"
+        # degree-4 circulant on n nodes = 2n edges; backbone-only (reach=1) = deg-2 = n edges (half)
+        assert next(iter(counts.values())) == 2 * N, f"N={N}: deg-4 arm should have 2N cards: {counts}"
+        s1 = build_stimulus("s0_zib", N, SEED, 0, VOCAB, difficulty="hard",
+                            condition="shuffle", hop_gaps=[1])
+        assert s1["hop_reach"] == 1 and len(s1["cards"]) == N
+
+
+def test_hopdial_gap_composition():
+    """The STATED cyclic connection distances are exactly {1, g} (min-image); larger g ⇒ shorter graph
+    diameter at fixed degree ⇒ shallower derivation for distant pairs (the manipulated variable)."""
+    N = 16
+    for g in (2, 4, 7):
+        edges = circulant_graph_gaps(N, [1, g])
+        cyc = sorted({min((hi - lo) % N, (lo - hi) % N) for lo, hi in edges})
+        assert cyc == sorted({1, g}), f"g={g}: cyclic gap set {cyc} != {{1,{g}}}"
+        # degree exactly 4 everywhere
+        assert all(_degree(edges, i) == 4 for i in range(N))
+        # contains the Hamiltonian path ⇒ determinate
+        assert all((i, i + 1) in edges for i in range(N - 1))
+
+
+def test_hopdial_twin_has_cycle():
+    """Each hop-dial coherence-null twin must admit NO valid total order (a genuine cycle)."""
+    from icom.generator.bcs import _has_cycle
+    import re
+    for g in (2, 3, 4):
+        for idx in range(8):
+            z = build_stimulus("s1_size", 12, SEED, idx, VOCAB, difficulty="hard",
+                               condition="shuffle", incoherent=True, hop_gaps=[1, g])
+            ent = {e: i for i, e in enumerate(z["latent_order"])}
+            directed = []
+            for c in z["cards"]:                          # claimed earlier→later edge (both wordings)
+                t = c["text"]
+                if " is smaller than " in t:
+                    a, b = re.match(r"The (\w+) is smaller than the (\w+)\.", t).groups()
+                else:
+                    b, a = re.match(r"The (\w+) is larger than the (\w+)\.", t).groups()
+                directed.append((ent[a], ent[b]))
+            assert _has_cycle(directed, 12), f"hop twin g={g} idx={idx} is coherent (no cycle!)"
+
+
+def test_hopdial_reach_gap_nhalf_rejected():
+    """A reach equal to n/2 would halve the degree (breaking regularity) — must be rejected."""
+    with pytest.raises(AssertionError):
+        circulant_graph_gaps(12, [1, 6])

@@ -148,6 +148,34 @@ def circulant_graph(n: int, d: int):
     return edges
 
 
+def circulant_graph_gaps(n: int, gaps):
+    """C_n(gaps): connect each rank i to i±g (mod n) for every g in `gaps`. The HOP-DIAL substrate.
+
+    Degree-regular (= 2·|gaps|, when no gap ≡ 0 mod n and no two gaps collide), and — because 1∈gaps
+    is required — it CONTAINS the Hamiltonian path {(i,i+1)} ⇒ the transitive closure is the unique
+    total order ⇒ DETERMINATE by construction. The dial: {1, g} holds degree (hence card count,
+    mention-frequency, and token load) FIXED while the shortcut REACH g (the max stated rank-gap) is
+    the single manipulated variable — the derivation depth needed to place mid/distant pairs scales
+    with which gaps are stated. All confound gates (mention⟂rank via degree-regularity, first-named⟂rank
+    via the Eulerian orientation applied downstream) are preserved, so an arm-to-arm geometry change
+    isolates hop-depth, not a role/frequency/length artifact. Contrast build_determinacy (dials whether
+    the order is determinable at all) and build_redundancy (repeats the SAME edge): here the order is
+    ALWAYS fully determinate and every edge is distinct — only the reach changes."""
+    gaps = sorted({int(g) for g in gaps})
+    assert gaps and gaps[0] >= 1 and 1 in gaps, "gap set must contain 1 (path ⇒ determinacy)"
+    assert all(1 <= g < n for g in gaps), f"gaps must be in 1..n-1 (n={n}, gaps={gaps})"
+    assert all(2 * g != n for g in gaps), f"gap n/2 halves the degree (n={n}, gaps={gaps})"
+    edges = set()
+    for i in range(n):
+        for g in gaps:
+            j = (i + g) % n
+            if i == j:
+                continue
+            lo, hi = (i, j) if i < j else (j, i)
+            edges.add((lo, hi))
+    return edges
+
+
 def _degree(edges, i):
     return sum(1 for e in edges if i in e)
 
@@ -515,7 +543,7 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
                    condition: str = "shuffle", incoherent: bool = False,
                    difficulty: str = None, readout: bool = True, declared: str = None,
-                   summary: bool = False, declared_pad: int = 0):
+                   summary: bool = False, declared_pad: int = 0, hop_gaps=None):
     """One BCS stimulus. family is a RELATIONS key. Returns a dict.
 
     difficulty overrides `balanced`: 'easy' = banded circulant (order recoverable
@@ -536,8 +564,12 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
         return _build_declared_list(family, rel, n_items, seed, idx, d, entities, condition, rng, readout,
                                     vocab=vocab, pad=declared_pad)
 
-    edges = (circulant_graph(n_items, d) if balanced
-             else regular_graph_with_path(n_items, d, rng, prefer=prefer))
+    if hop_gaps is not None:                                   # HOP-DIAL: C_n({1,g}) reach dial, fixed degree
+        edges = circulant_graph_gaps(n_items, hop_gaps)
+        d = 2 * len(sorted({int(g) for g in hop_gaps}))        # effective degree (gate/metadata)
+    else:
+        edges = (circulant_graph(n_items, d) if balanced
+                 else regular_graph_with_path(n_items, d, rng, prefer=prefer))
     edge_list = sorted(edges)
     if declared == "adjacency":                                # E2/D3: only rank-adjacent pairs stated →
         edge_list = [(i, i + 1) for i in range(n_items - 1)]   # order recoverable in ONE hop (declared-adjacency)
@@ -606,6 +638,9 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     stim = {
         "family": family, "condition": condition, "n_items": n_items, "seed": seed,
         "relation": rel.name, "degree": d, "balanced": balanced, "incoherent": incoherent,
+        "structure": "total_order",
+        "hop_reach": (max(int(g) for g in hop_gaps) if hop_gaps else None),   # HOP-DIAL reach g
+        "hop_gaps": (sorted({int(g) for g in hop_gaps}) if hop_gaps else None),
         "declared": (declared if declared == "adjacency"        # E2/D3 declared-adjacency tag
                      else ("derived_summary" if summary else None)),   # E2/D4 (None = plain derived D1)
         "latent_order": list(entities),

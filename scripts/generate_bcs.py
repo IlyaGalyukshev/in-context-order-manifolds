@@ -59,6 +59,12 @@ def main():
     ap.add_argument("--redund-pad", default="",
                     help="E3 length-control (comma pad counts): emit r=1 stimuli padded with N junk DISTRACTOR "
                          "cards → token length grows, target graph does NOT (is the N-collapse tokens or graph?)")
+    ap.add_argument("--hopdial", default="",
+                    help="HOP-DIAL (comma reach values, e.g. '2,3,4,6'): per value g emit a C_n({1,g}) "
+                         "circulant real+twin — gap-1 backbone (determinacy) + shortcut reach g, at FIXED "
+                         "degree 4 (⇒ identical card count / mention-freq / token load across arms). "
+                         "g=1 gives the degree-2 backbone-only reference (NOT card-matched). Turns the "
+                         "multi-hop finding into a by-design derivation-depth dose-response.")
     args = ap.parse_args()
 
     vocab = json.load(open(args.pool))["names"]
@@ -173,6 +179,26 @@ def main():
                                 z = build_redundancy(fam, N, SEED, idx, vocab, r=1, d=args.degree,
                                                      difficulty=diff, incoherent=True, pad=pd)
                                 z["difficulty"] = diff; fn.write(json.dumps(z) + "\n"); n_null += 1
+                        # HOP-DIAL: reach g → C_n({1,g}) circulant (fixed degree 4), real+twin per reach.
+                        for gg in [int(x) for x in args.hopdial.split(",") if x != ""]:
+                            hg = [1] if gg == 1 else [1, gg]      # g=1: backbone-only (deg 2); g>=2: {1,g} (deg 4)
+                            sd = build_stimulus(fam, N, SEED, idx, vocab, difficulty=diff,
+                                                condition="shuffle", hop_gaps=hg)
+                            sd["difficulty"] = diff
+                            g = sd["gate"]                        # hop arms must still pass every confound gate
+                            if not (g["degree_regular"] and g["unique_total_order"]
+                                    and abs(g["corr_rank_subjfrac"]) < 1e-9
+                                    and abs(g["corr_rank_mentions"]) < 1e-9
+                                    and abs(g["corr_rank_slot"]) <= 0.20):
+                                gate_fail += 1
+                            fs.write(json.dumps(sd) + "\n"); n_stim += 1
+                            for q in make_battery(sd):            # behavioral hop dose-response
+                                q["hop_reach"] = gg
+                                fq.write(json.dumps(q) + "\n"); n_q += 1
+                            z = build_stimulus(fam, N, SEED, idx, vocab, difficulty=diff,
+                                               condition="shuffle", incoherent=True, hop_gaps=hg)
+                            z["difficulty"] = diff
+                            fn.write(json.dumps(z) + "\n"); n_null += 1
 
     n_struct = 0
     if args.structures:
