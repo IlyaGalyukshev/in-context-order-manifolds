@@ -53,11 +53,12 @@ def main() -> None:
 
     roster = {}
     mcfg = yaml.safe_load(open(args.models_config))
-    for sec in ("models", "confirmatory", "exploratory"):
+    for sec in ("models", "confirmatory", "exploratory", "diffusion"):   # E10: include diffusion LMs
         roster.update(mcfg.get(sec) or {})
     spec = roster[args.model]
     is_instruct = spec.get("role", "instruct") != "base"
     loci = set(args.loci.split(",")) if args.loci else None
+    is_diffusion = spec.get("arch") == "diffusion"                       # Dream/LLaDA — bidirectional, custom code
 
     out_dir = Path(args.out) / args.model
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -68,10 +69,15 @@ def main() -> None:
     if args.limit:
         stimuli = stimuli[: args.limit]
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"])
-    model = AutoModelForCausalLM.from_pretrained(
-        spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-        device_map=args.device).eval()
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion)
+    if is_diffusion:                                            # E10: diffusion LMs need custom modeling + AutoModel
+        from transformers import AutoModel
+        model = AutoModel.from_pretrained(spec["hf_id"], dtype=torch.float16, trust_remote_code=True,
+                                          device_map=args.device).eval()
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
+            device_map=args.device).eval()
 
     fracs = [float(x) for x in args.card_fracs.split(",") if x] if args.card_fracs else [None]
     if fracs != [None] and not args.probe:
