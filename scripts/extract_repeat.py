@@ -69,7 +69,10 @@ def main() -> None:
     if args.limit:
         stimuli = stimuli[: args.limit]
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion)
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True)
+    if is_diffusion and not tok.is_fast:                       # Dream/LLaDA sometimes ship a slow tokenizer;
+        tok = AutoTokenizer.from_pretrained(spec.get("tokenizer_id", spec["hf_id"]),  # offsets need a FAST one
+                                            use_fast=True, trust_remote_code=True)
     if is_diffusion:                                            # E10: diffusion LMs need custom modeling + AutoModel
         from transformers import AutoModel
         model = AutoModel.from_pretrained(spec["hf_id"], dtype=torch.float16, trust_remote_code=True,
