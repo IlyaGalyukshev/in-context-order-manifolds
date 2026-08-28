@@ -103,10 +103,13 @@ def extract_probe_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
 
 def extract_pooled_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
                           device: str = "cuda:0", root_seed: int = 20260724, loci=None,
-                          prefix: str = "") -> dict:
+                          prefix: str = "", is_diffusion: bool = False) -> dict:
     """{pooled:{scheme:[N,k,L+1,D] fp16}, ranks:[N], entities:list, n_reads:k}. `loci` (set of
     scheme names) restricts what is pooled/stored (readout/card_mean/last_token/name).
-    `prefix` (E5) prepends a task-expectation sentence to every re-presentation."""
+    `prefix` (E5) prepends a task-expectation sentence to every re-presentation.
+    `is_diffusion` (E10 Dream/LLaDA): drop the all-ones (batch=1) attention_mask — bidirectional
+    models attend to the whole prompt, and their custom forward feeds a `long` mask into fp16 SDPA
+    (which rejects it); with no mask the read is full-attention, exactly the intended bidirectional read."""
     import torch
     from icom.extraction.hooks import format_extraction_prompt
     from icom.extraction.pooling import build_spans, pool_all
@@ -125,7 +128,10 @@ def extract_pooled_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
         enc = tok(fmt, return_offsets_mapping=True, return_tensors="pt", add_special_tokens=False)
         offsets = [tuple(x) for x in enc.pop("offset_mapping")[0].tolist()]
         spans = build_spans(fmt, st, offsets)
-        out = model(**{kk: v.to(device) for kk, v in enc.items()}, output_hidden_states=True)
+        enc_kw = {kk: v.to(device) for kk, v in enc.items()}
+        if is_diffusion:
+            enc_kw.pop("attention_mask", None)                 # full bidirectional read; avoid long-mask SDPA crash
+        out = model(**enc_kw, output_hidden_states=True)
         hidden = torch.stack(out.hidden_states, dim=0)[:, 0].float().cpu().numpy()   # [L+1,T,D]
         pooled = pool_all(hidden, spans, ents)                 # {scheme:[N,L+1,D]}
         if loci:

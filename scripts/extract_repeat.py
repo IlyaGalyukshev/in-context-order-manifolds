@@ -77,6 +77,16 @@ def main() -> None:
         from transformers import AutoModel
         model = AutoModel.from_pretrained(spec["hf_id"], dtype=torch.float16, trust_remote_code=True,
                                           device_map=args.device).eval()
+        # Dream/LLaDA custom forwards feed a `long` attn_mask into fp16 SDPA on V100 (which rejects
+        # int masks); cast any integer mask to bool (1=attend) so the bidirectional read runs.
+        import torch.nn.functional as _F
+        _orig_sdpa = _F.scaled_dot_product_attention
+        def _sdpa_bool(q, key, val, attn_mask=None, *a, **kw):
+            if attn_mask is not None and attn_mask.dtype in (
+                    torch.long, torch.int, torch.int32, torch.int64, torch.uint8, torch.int8):
+                attn_mask = attn_mask.to(torch.bool)
+            return _orig_sdpa(q, key, val, attn_mask, *a, **kw)
+        _F.scaled_dot_product_attention = _sdpa_bool
     else:
         model = AutoModelForCausalLM.from_pretrained(
             spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
@@ -101,7 +111,8 @@ def main() -> None:
                                        card_frac=(1.0 if fr is None else fr), probe_type=args.probe_type)
         else:
             rec = extract_pooled_repeat(model, tok, st, is_instruct, k=args.k,
-                                        device=args.device, root_seed=args.seed, loci=loci, prefix=prefix)
+                                        device=args.device, root_seed=args.seed, loci=loci,
+                                        prefix=prefix, is_diffusion=is_diffusion)
         extra = {}
         if "coord_x" in st:
             extra["coord_x"] = np.array([st["coord_x"][e] for e in st["latent_order"]])
