@@ -29,6 +29,10 @@ def main() -> None:
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--sample-every", type=int, default=25)
+    ap.add_argument("--model-path", default=None,
+                    help="Cluster/local override: load weights from THIS dir (local_files_only), no roster")
+    ap.add_argument("--device-map", default=None, help="device_map (e.g. 'auto' to shard across both H100s)")
+    ap.add_argument("--role", default="instruct", choices=["instruct", "base"])
     args = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -36,10 +40,16 @@ def main() -> None:
     from icom.battery.client import BatteryRunner
     from icom.battery.scoring import score_row
 
-    roster = {}
-    for sec in ("models", "confirmatory", "exploratory"):
-        roster.update(yaml.safe_load(open(args.models_config)).get(sec) or {})
-    spec = roster[args.model]
+    if args.model_path:                                        # cluster/local path (offline, no roster)
+        spec = {"hf_id": args.model_path, "role": args.role}
+        local_only = True
+    else:
+        roster = {}
+        for sec in ("models", "confirmatory", "exploratory"):
+            roster.update(yaml.safe_load(open(args.models_config)).get(sec) or {})
+        spec = roster[args.model]
+        local_only = False
+    device_map = args.device_map or args.device
 
     stimuli = [json.loads(l) for l in open(args.stimuli)]
     # Process in a fixed RANDOM order (not file order) so a run that does not
@@ -70,13 +80,17 @@ def main() -> None:
                       if c >= len(questions[next(st["content_key"] for st in stimuli
                                                  if st["stimulus_id"] == s)])}
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"])
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-        device_map=args.device)
+        device_map=device_map, local_files_only=local_only)
     model.eval()
+    try:                                                       # device_map='auto' → inputs to embedding device
+        run_device = str(model.get_input_embeddings().weight.device) if device_map == "auto" else args.device
+    except Exception:
+        run_device = args.device
     runner = BatteryRunner(model, tok, is_instruct=spec.get("role", "instruct") != "base",
-                           batch_size=args.batch_size, device=args.device)
+                           batch_size=args.batch_size, device=run_device)
 
     import re as _re
 

@@ -132,7 +132,9 @@ def extract_pooled_repeat(model, tok, st: dict, is_instruct: bool, k: int = 8,
         if is_diffusion:
             enc_kw.pop("attention_mask", None)                 # full bidirectional read; avoid long-mask SDPA crash
         out = model(**enc_kw, output_hidden_states=True)
-        hidden = torch.stack(out.hidden_states, dim=0)[:, 0].float().cpu().numpy()   # [L+1,T,D]
+        # move each layer to CPU BEFORE stacking — with device_map='auto' the layers are sharded
+        # across GPUs, so a direct torch.stack over on-device tensors would be cross-device.
+        hidden = torch.stack([h[0].float().cpu() for h in out.hidden_states], dim=0).numpy()  # [L+1,T,D]
         pooled = pool_all(hidden, spans, ents)                 # {scheme:[N,L+1,D]}
         if loci:
             pooled = {s: v for s, v in pooled.items() if s in loci}

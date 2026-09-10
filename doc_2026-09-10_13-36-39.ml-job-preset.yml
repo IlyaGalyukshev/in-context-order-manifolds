@@ -1,0 +1,60 @@
+# .ml-job-preset.yml — in-context ORDER-MANIFOLD experiments on 2×H100
+# allowed CPU - 26, GPU - 2
+#
+# One job = ONE model. It uploads the whole repo to /work, serves the chosen
+# model locally at /mr_models (HF offline), and runs run_scripts.sh, which does:
+#   dataset → extract (real + coherence-twin) → interior-RSA probe → behaviour gate.
+# Monitor by tailing the job log: each stage prints a banner, progress %, and the
+# key RSA numbers (rsa_real / incr / SIG).
+#
+# To change the model: uncomment ONE model_registry block below and put the SAME
+# HF id as the final run_scripts.sh argument. EXPERIMENT=core (scale insurance) or
+# EXPERIMENT=hopdial (derivation-depth dose-response) — set in args.
+job:
+  gpu_driver_version: latest
+  time_limit: 48h0m0s
+  region: ix-m5-sm11
+  flavor: h100-2x
+  generate_name: order-manifold-scale
+  image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
+  work_dir: /work
+
+  # Persist results beyond the job by pointing this at your mlc_storage and
+  # setting OUT_ROOT=/work/out in args. Otherwise results live in /work/results
+  # (visible in the job log via the Stage-DONE file listing).
+  # storages:
+  #   - name: manifold_out
+  #     type: mlc_storage
+  #     src: <your_storage>
+  #     dst: "/work/out"
+  #     readwrite: true
+
+  input:
+    - type: files
+      src: ./
+      dst: "/work/"
+      mask: "*"
+
+    # ---- pick ONE model (uncomment) and mirror its HF id in the run line ----
+    - type: model_registry
+      src: Qwen/Qwen3-14B                       # dense; clean scale point (4B→14B→32B ladder)
+      version: 231c69a380487f6c0e52d02dcf0d5456d1918201
+      dst: /mr_models/
+    # - type: model_registry
+    #   src: Qwen/Qwen3-32b                     # dense 32B; fp16 ~64GB → shards across both H100s
+    #   version: 9216db5781bf21249d130ec9da846c4624c16137
+    #   dst: /mr_models/
+    # - type: model_registry
+    #   src: Qwen/Qwen3.5-27B                   # newest, but VLM stack (Qwen3_5ForConditionalGeneration)
+    #   version: b7ca741b86de18df552fd2cc952861e04621a4bd
+    #   dst: /mr_models/
+
+  args:
+      - bash
+      - -lc
+      - >
+        pip install -q "transformers>=4.57" accelerate scipy scikit-learn pyyaml einops sentencepiece protobuf &&
+        export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false &&
+        export MODEL_PATH=/mr_models ROLE=instruct EXPERIMENT=core &&
+        chmod +x /work/run_scripts.sh &&
+        /work/run_scripts.sh Qwen/Qwen3-14B

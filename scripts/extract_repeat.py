@@ -45,20 +45,34 @@ def main() -> None:
                     help="E7-Q assembly-ladder rung (requires --probe): which computation the probe evokes")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260724)
+    ap.add_argument("--model-path", default=None,
+                    help="Cluster/local override: load weights from THIS directory (local_files_only), "
+                         "bypassing the models.yaml roster — for the H100 job's /mr_models model.")
+    ap.add_argument("--device-map", default=None,
+                    help="transformers device_map (e.g. 'auto' to shard a big model across both H100s). "
+                         "Default: --device. With 'auto', inputs go to the input-embedding device.")
+    ap.add_argument("--role", default="instruct", choices=["instruct", "base"],
+                    help="with --model-path: chat-template (instruct) vs raw (base) formatting")
     args = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     from icom.extraction.repeat import extract_pooled_repeat, extract_probe_repeat
 
-    roster = {}
-    mcfg = yaml.safe_load(open(args.models_config))
-    for sec in ("models", "confirmatory", "exploratory", "diffusion"):   # E10: include diffusion LMs
-        roster.update(mcfg.get(sec) or {})
-    spec = roster[args.model]
+    if args.model_path:                                        # cluster/local path (offline, no roster)
+        spec = {"hf_id": args.model_path, "role": args.role}
+        local_only = True
+    else:
+        roster = {}
+        mcfg = yaml.safe_load(open(args.models_config))
+        for sec in ("models", "confirmatory", "exploratory", "diffusion"):   # E10: include diffusion LMs
+            roster.update(mcfg.get(sec) or {})
+        spec = roster[args.model]
+        local_only = False
     is_instruct = spec.get("role", "instruct") != "base"
     loci = set(args.loci.split(",")) if args.loci else None
     is_diffusion = spec.get("arch") == "diffusion"                       # Dream/LLaDA — bidirectional, custom code
+    device_map = args.device_map or args.device
 
     out_dir = Path(args.out) / args.model
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -69,14 +83,15 @@ def main() -> None:
     if args.limit:
         stimuli = stimuli[: args.limit]
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True)
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True,
+                                        local_files_only=local_only)
     if is_diffusion and not tok.is_fast:                       # Dream/LLaDA sometimes ship a slow tokenizer;
         tok = AutoTokenizer.from_pretrained(spec.get("tokenizer_id", spec["hf_id"]),  # offsets need a FAST one
                                             use_fast=True, trust_remote_code=True)
     if is_diffusion:                                            # E10: diffusion LMs need custom modeling + AutoModel
         from transformers import AutoModel
         model = AutoModel.from_pretrained(spec["hf_id"], dtype=torch.float16, trust_remote_code=True,
-                                          device_map=args.device).eval()
+                                          device_map=device_map, local_files_only=local_only).eval()
         # Dream/LLaDA custom forwards feed a `long` attn_mask into fp16 SDPA on V100 (which rejects
         # int masks); cast any integer mask to bool (1=attend) so the bidirectional read runs.
         import torch.nn.functional as _F
@@ -90,7 +105,15 @@ def main() -> None:
     else:
         model = AutoModelForCausalLM.from_pretrained(
             spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-            device_map=args.device).eval()
+            device_map=device_map, local_files_only=local_only).eval()
+
+    # with device_map='auto' the model is sharded across GPUs → inputs go to the input-embedding
+    # device, and extract_pooled_repeat moves each hidden-state layer to CPU before stacking.
+    try:
+        run_device = model.get_input_embeddings().weight.device if device_map == "auto" else args.device
+    except Exception:
+        run_device = args.device
+    args.device = str(run_device)
 
     fracs = [float(x) for x in args.card_fracs.split(",") if x] if args.card_fracs else [None]
     if fracs != [None] and not args.probe:
