@@ -1,6 +1,6 @@
-# BCS — примеры промптов (то, что подаётся в модель)
+# BCS — example prompts (exactly what is fed to the model)
 
-## s0_zib — абстрактная nonce-связь «zibs»
+## s0_zib — abstract nonce relation 'zibs'
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -27,7 +27,7 @@ The promth zibs the breemb.
 Entities: the queench, the spund, the glundrel, the flune, the breemb, the cleene, the drund, the promth, the triemth.
 ```
 
-## s0_quomp — абстрактная nonce-связь «quomps»
+## s0_quomp — abstract nonce relation 'quomps'
 
 ```
 In this puzzle, 'quomps' is a transitive relation: if X quomps Y and Y quomps Z, then X quomps Z. 'X quomps Y' means X comes before Y in the quomp-order.
@@ -54,7 +54,7 @@ The thrinnel is quomped by the plurn.
 Entities: the thrinnel, the plene, the sliex, the drieft, the plurn, the stemp, the slulb, the sniept, the brilb.
 ```
 
-## s1_size — семантика: larger/smaller
+## s1_size — semantic: larger/smaller
 
 ```
 The drunnel is smaller than the spund.
@@ -79,7 +79,7 @@ The grastrick is smaller than the spund.
 Entities: the smorl, the spund, the drunnel, the gloask, the slind, the triern, the smoarl, the grastrick, the spiemb.
 ```
 
-## s1_loud — семантика: louder/quieter
+## s1_loud — semantic: louder/quieter
 
 ```
 The troft is quieter than the glinnel.
@@ -104,7 +104,7 @@ The slorl is louder than the spoane.
 Entities: the spoane, the threzzle, the groax, the gliept, the troft, the slorl, the preemth, the glinnel, the smundrel.
 ```
 
-## s1_heat — семантика: hotter/colder
+## s1_heat — semantic: hotter/colder
 
 ```
 The smipt is cooler than the snerl.
@@ -129,7 +129,7 @@ The snerl is cooler than the quiemb.
 Entities: the smorl, the thrinnel, the prennel, the quiemb, the smipt, the glilb, the broastrick, the stiemp, the snerl.
 ```
 
-## coherence-twin (s0_zib, инъектирован цикл → валидного порядка нет)
+## coherence-twin (s0_zib, a cycle is injected -> no valid total order)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -156,7 +156,7 @@ The breemb is zibbed by the promth.
 Entities: the queench, the spund, the glundrel, the flune, the breemb, the cleene, the drund, the promth, the triemth.
 ```
 
-## condition = forward (карточки по возрастанию ранга; s1_size)
+## condition = forward (cards sorted by rank; s1_size)
 
 ```
 The broax is smaller than the tronnel.
@@ -181,7 +181,7 @@ The gleeft is smaller than the croand.
 Entities: the triex, the gleeft, the tronnel, the floamth, the bleemp, the broax, the quoamb, the treex, the croand.
 ```
 
-## condition = shuffle (те же связи, перемешаны; s1_size)
+## condition = shuffle (same relations, shuffled; s1_size)
 
 ```
 The triex is smaller than the gleeft.
@@ -206,7 +206,7 @@ The bleemp is smaller than the gleeft.
 Entities: the tronnel, the quoamb, the croand, the gleeft, the broax, the bleemp, the treex, the triex, the floamth.
 ```
 
-## difficulty = easy (локальные цепочки; s0_zib)
+## difficulty = easy (local chaining; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -233,7 +233,7 @@ The stannel zibs the spoane.
 Entities: the stannel, the slask, the sliex, the thrarl, the thrundrel, the gliept, the spoane, the clept, the plene.
 ```
 
-## difficulty = hard (дальние рёбра, нужна глобальная интеграция; s0_zib)
+## difficulty = hard (long-range edges, global integration needed; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -260,7 +260,7 @@ The sliex zibs the thrundrel.
 Entities: the spoane, the stannel, the sliex, the clept, the thrarl, the plene, the gliept, the slask, the thrundrel.
 ```
 
-## D2 declared-list (полный порядок ЗАЯВЛЕН, не выводится; s0_zib)
+## D2 declared-list (full order is STATED, not derived; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -272,7 +272,7 @@ Order: the snandrel, then the troaft, then the cloask, then the prarvic, then th
 Entities: the frervic, the troaft, the groaft, the prarvic, the cloask, the drorvic, the snomp, the snandrel, the grurl.
 ```
 
-## D3 declared-adjacency (только соседние пары; s0_zib)
+## D3 declared-adjacency (only rank-adjacent pairs; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -289,7 +289,7 @@ The drorvic zibs the frervic.
 Entities: the frervic, the prarvic, the drorvic, the snomp, the snandrel, the cloask, the troaft, the groaft, the grurl.
 ```
 
-## D4 derived + summary (выводимые связи + итоговая строка порядка; s0_zib)
+## D4 derived + summary (derived relations + a final order-summary line; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -318,7 +318,7 @@ The complete order, from earliest to latest, is: the snandrel, then the troaft, 
 Entities: the prarvic, the frervic, the grurl, the cloask, the snandrel, the snomp, the troaft, the drorvic, the groaft.
 ```
 
-## hop-dial reach=2 (связи gap 1 и 2; s0_zib)
+## hop-dial reach=2 (edges of gap 1 and 2; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -351,7 +351,7 @@ The skiezzle is zibbed by the quirn.
 Entities: the spiene, the drund, the plorl, the plipt, the quoamb, the snorl, the quirn, the fleept, the bleelb, the queept, the skiezzle, the bloanch.
 ```
 
-## hop-dial reach=4 (связи gap 1 и 4 — глубже вывод; s0_zib)
+## hop-dial reach=4 (edges of gap 1 and 4 — deeper derivation; s0_zib)
 
 ```
 In this puzzle, 'zibs' is a transitive relation: if X zibs Y and Y zibs Z, then X zibs Z. 'X zibs Y' means X comes before Y in the zib-order.
@@ -384,7 +384,7 @@ The drund zibs the queept.
 Entities: the plipt, the snorl, the spiene, the fleept, the bleelb, the plorl, the skiezzle, the queept, the drund, the bloanch, the quoamb, the quirn.
 ```
 
-## structure = cyclic (кольцо; s0_zib)
+## structure = cyclic (ring; s0_zib)
 
 ```
 In this puzzle the entities are arranged clockwise around a circle and the positions wrap around, so every entity has both a clockwise-next and a clockwise-previous entity. 'The A is k place(s) before the B' means the B is k steps clockwise from the A; equivalently, 'The B is k place(s) after the A' means the same thing.
@@ -411,7 +411,7 @@ The frustrick is 2 places after the crurvic.
 Entities: the brerl, the triex, the crurvic, the troarl, the briench, the treennel, the frustrick, the grarl, the drine.
 ```
 
-## structure = grid2d (2D-решётка size×loud)
+## structure = grid2d (2D lattice size x loud)
 
 ```
 The glizzle is louder than the spunch.
@@ -454,7 +454,7 @@ The drirvic is quieter than the croarvic.
 Entities: the glizzle, the plapt, the steerl, the cleelb, the drirvic, the thrisk, the smomth, the spunch, the croarvic.
 ```
 
-## structure = partial_order (несколько несвязанных цепочек; s1_size)
+## structure = partial_order (several disjoint chains; s1_size)
 
 ```
 The quennel is smaller than the plipt.
@@ -469,7 +469,7 @@ The quirn is smaller than the quennel.
 Entities: the glendrel, the pranch, the quennel, the drine, the cloalb, the plipt, the smuft, the quirn.
 ```
 
-## Вопросы батареи (тоже подаются в модель, к каждому стимулу)
+## Battery questions (also fed to the model, per stimulus)
 
 ```
 [reconstruction] Using only the relations stated above, list all entities from the smallest to the largest (this order may differ from the order the lines appear in). Reply with one entity name per line, nothing else.

@@ -1,6 +1,6 @@
 # Pre-registration — confirmatory wave E1–E4 (v5 program)
 
-Frozen decision rules for the P1 experiments, per the plan's M6(д)/§11.3. Written to defend against
+Frozen decision rules for the P1 experiments, per the plan's M6(d)/§11.3. Written to defend against
 the garden-of-forking-paths given the project's v1→v4.9 history. Load-bearing claims require **≥3
 models and a bootstrap CI over stimuli**; the held-out layer is the MAIN number, argmax an optimistic
 bound; every headline carries n + CI. Interior-only (ranks 3..N−2) is primary.
