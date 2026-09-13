@@ -19,15 +19,14 @@ job:
   image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
   work_dir: /work
 
-  # Persist results beyond the job by pointing this at your mlc_storage and
-  # setting OUT_ROOT=/work/out in args. Otherwise results live in /work/results
-  # (visible in the job log via the Stage-DONE file listing).
-  # storages:
-  #   - name: manifold_out
-  #     type: mlc_storage
-  #     src: <your_storage>
-  #     dst: "/work/out"
-  #     readwrite: true
+  # Results persist in the `manifolds` mlc_storage (mounted read-write at
+  # /work/manifolds); run_scripts.sh writes there via OUT_ROOT (set in args).
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: "/work/manifolds"
+      readwrite: true
 
   input:
     - type: files
@@ -55,6 +54,6 @@ job:
       - >
         pip install -q "transformers>=4.57" accelerate scipy scikit-learn pyyaml einops sentencepiece protobuf &&
         export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false &&
-        export MODEL_PATH=/mr_models ROLE=instruct EXPERIMENT=core &&
+        export MODEL_PATH=/mr_models ROLE=instruct EXPERIMENT=core OUT_ROOT=/work/manifolds/results &&
         chmod +x /work/run_scripts.sh &&
         /work/run_scripts.sh Qwen/Qwen3-14B
