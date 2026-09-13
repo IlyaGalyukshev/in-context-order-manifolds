@@ -70,15 +70,15 @@ def main() -> None:
     out_path = out_dir / f"battery_{args.model}.jsonl"
     done_stims = set()
     if out_path.exists():
-        for l in open(out_path):
-            done_stims.add(json.loads(l)["stimulus_id"])
-        # only stimuli with a full battery count as done
+        # only stimuli in the CURRENT set with a full battery count as done. Rows whose stimulus_id
+        # is not in this run's stimuli (e.g. a prior run with a different dataset wrote to this path)
+        # are ignored, not crashed on.
+        ck_by_sid = {st["stimulus_id"]: st["content_key"] for st in stimuli}
         counts = defaultdict(int)
         for l in open(out_path):
             counts[json.loads(l)["stimulus_id"]] += 1
         done_stims = {s for s, c in counts.items()
-                      if c >= len(questions[next(st["content_key"] for st in stimuli
-                                                 if st["stimulus_id"] == s)])}
+                      if s in ck_by_sid and c >= len(questions[ck_by_sid[s]])}
 
     tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
     model = AutoModelForCausalLM.from_pretrained(
@@ -152,6 +152,7 @@ def main() -> None:
     # summary
     import pandas as pd
     df = pd.read_json(out_path, lines=True)
+    df = df[df["stimulus_id"].isin({st["stimulus_id"] for st in stimuli})]  # drop any prior-dataset rows
     df.to_parquet(out_dir / f"battery_{args.model}.parquet")
     print("\n=== summary (mean score / parse-fail rate) ===")
     g = df.groupby(["family", "condition", "q_family"]).agg(
