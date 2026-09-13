@@ -83,13 +83,8 @@ def main() -> None:
     if args.limit:
         stimuli = stimuli[: args.limit]
 
-    try:
-        tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=True, use_fast=True,
-                                            local_files_only=local_only)
-    except AttributeError:   # gemma fast-tokenizer + transformers 5.0.dev: extra_special_tokens is a
-        tok = AutoTokenizer.from_pretrained(  # list but .keys() is called on it → override with {}
-            spec["hf_id"], trust_remote_code=True, use_fast=True,
-            local_files_only=local_only, extra_special_tokens={})
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True,
+                                        local_files_only=local_only)
     if is_diffusion and not tok.is_fast:                       # Dream/LLaDA sometimes ship a slow tokenizer;
         tok = AutoTokenizer.from_pretrained(spec.get("tokenizer_id", spec["hf_id"]),  # offsets need a FAST one
                                             use_fast=True, trust_remote_code=True)
@@ -110,7 +105,7 @@ def main() -> None:
     else:
         model = AutoModelForCausalLM.from_pretrained(
             spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-            device_map=device_map, local_files_only=local_only, trust_remote_code=True).eval()
+            device_map=device_map, local_files_only=local_only).eval()
 
     # with device_map='auto' the model is sharded across GPUs → inputs go to the input-embedding
     # device, and extract_pooled_repeat moves each hidden-state layer to CPU before stacking.

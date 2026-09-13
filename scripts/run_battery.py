@@ -80,15 +80,10 @@ def main() -> None:
                       if c >= len(questions[next(st["content_key"] for st in stimuli
                                                  if st["stimulus_id"] == s)])}
 
-    try:
-        tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only,
-                                            trust_remote_code=True)
-    except AttributeError:   # gemma fast-tokenizer + transformers 5.0.dev: extra_special_tokens is a
-        tok = AutoTokenizer.from_pretrained(  # list but .keys() is called on it → override with {}
-            spec["hf_id"], local_files_only=local_only, trust_remote_code=True, extra_special_tokens={})
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-        device_map=device_map, local_files_only=local_only, trust_remote_code=True)
+        device_map=device_map, local_files_only=local_only)
     model.eval()
     try:                                                       # device_map='auto' → inputs to embedding device
         run_device = str(model.get_input_embeddings().weight.device) if device_map == "auto" else args.device

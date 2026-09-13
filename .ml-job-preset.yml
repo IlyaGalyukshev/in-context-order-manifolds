@@ -68,8 +68,12 @@ job:
     - bash
     - -lc
     - >
+      (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
       pip install -q accelerate scipy scikit-learn pyyaml sentencepiece protobuf &&
       export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
-      python3 -c "import transformers; print('[env] image transformers', transformers.__version__)" &&
+      python3 -c "import transformers; print('[env] transformers', transformers.__version__)" &&
       chmod +x /work/run_scripts.sh &&
-      bash /work/run_scripts.sh google/gemma-4-31B-it   # gemma-4 loads via trust_remote_code (custom modeling in the repo)
+      bash /work/run_scripts.sh google/gemma-4-31B-it
+      # gemma-4 (model_type gemma4) needs transformers>=5.5.0; the image ships 5.0.0.dev0 (KeyError 'gemma4').
+      # Pin 5.13.0 — the SAME version the gemma-4-12b V100 runs used (clean 12b→31b ladder), and it needs
+      # only huggingface-hub>=1.5.0 (satisfied by the internal index's 1.29.0), unlike git-main (needs 1.31.0).
