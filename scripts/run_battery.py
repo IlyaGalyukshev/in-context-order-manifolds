@@ -116,7 +116,7 @@ def main() -> None:
                 scored = score_row(q, raw["completion"], st["latent_order"],
                                    raw["logit_margin"], mention_order=mention)
                 sc = scored.get("score")
-                if sc is not None:
+                if sc is not None and sc == sc:      # skip None AND NaN (parse-fail) so one bad row ≠ nan mean
                     tally[q["family"]][0] += float(sc); tally[q["family"]][1] += 1
                 if sample is None and not scored.get("parse_failed", False):
                     sample = (q, raw, scored)
