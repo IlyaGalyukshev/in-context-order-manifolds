@@ -55,8 +55,11 @@ log "stimuli=$(wc -l <"$DATA/stimuli.jsonl")  twin=$(wc -l <"$DATA/stimuli_null.
 
 # ---- Stage 1: extraction (real + coherence-twin), sharded over both H100s ---
 banner "STAGE 1/3 — extraction (readout + card_mean, k=6)"
+# --store rdm (RDM only, ~84KB/stimulus) — all the interior-RSA measurement needs, and keeps the
+# whole acts tree ~200MB (fits a 10GB storage). The per-entity `mean` tensors (needed only for
+# cPCA/decode) are ~13MB/stimulus (~32GB total for a 14B) — add `+mean` only with a bigger storage.
 COMMON=(--model "$TAG" --model-path "$MODEL_PATH" --role "$ROLE" --device-map auto \
-        --k 6 --loci readout,card_mean --store rdm+mean --out "$OUT/acts" "${LIM[@]}")
+        --k 6 --loci readout,card_mean --store rdm --out "$OUT/acts" "${LIM[@]}")
 log ">> real stimuli";  python3 "$WORK/scripts/extract_repeat.py" "${COMMON[@]}" --stimuli "$DATA/stimuli.jsonl"      || { log "!! EXTRACT real FAILED";  exit 1; }
 log ">> twin stimuli";  python3 "$WORK/scripts/extract_repeat.py" "${COMMON[@]}" --stimuli "$DATA/stimuli_null.jsonl" || { log "!! EXTRACT twin FAILED";  exit 1; }
 log "extracted npz: $(ls "$OUT/acts/$TAG"/*.npz 2>/dev/null | wc -l)"
