@@ -182,6 +182,10 @@ def main() -> None:
             print(f"[sanity {st['family']}/{st['condition']} frac={fr} null={st.get('incoherent', False)}] "
                   f"k={rec['n_reads']} store={args.store} shapes={sh}", flush=True)
         if done % 25 == 0:
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()     # release cached blocks periodically → no fragmentation OOM on long runs
             print(f"[{done}/{len(stimuli)*len(fracs)}] {(time.monotonic()-t0)/done:.2f}s/stim", flush=True)
     print(f"DONE model={args.model} done={done} skipped={skipped} "
           f"total_s={time.monotonic()-t0:.0f}", flush=True)

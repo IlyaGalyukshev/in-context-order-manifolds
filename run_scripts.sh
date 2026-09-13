@@ -27,6 +27,7 @@ set -uo pipefail
 MODEL_ID="${1:?usage: run_scripts.sh <MODEL_ID>}"
 export MODEL_PATH="${MODEL_PATH:-/hf_models}"
 WORK="${WORK_DIR:-/work}"; export PYTHONPATH="$WORK/src"; export TOKENIZERS_PARALLELISM=false
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True   # anti-fragmentation over the long run (varying N)
 TAG="$(echo "$MODEL_ID" | tr '/: ' '___')"
 DATA="${DATA_DIR:-$WORK/data/sweep}"                 # SHARED across models (deterministic → identical)
 OUT="${OUT_ROOT:-$WORK/manifolds}/$TAG"; A="$OUT/acts"

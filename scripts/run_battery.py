@@ -144,6 +144,10 @@ def main() -> None:
                       flush=True)
             # LIVE running accuracy per question family (intermediate result, not just at the end)
             if n_done % 20 == 0:
+                import gc
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()   # keep GPU memory flat over the whole gate
                 dt = (time.monotonic() - t0) / n_done
                 acc = "  ".join(f"{k}={v[0]/v[1]:.2f}" for k, v in sorted(tally.items()) if v[1])
                 print(f"[gate {n_done}/{total} | {dt:.1f}s/stim | ETA {(total-n_done)*dt/60:.0f}min]"
