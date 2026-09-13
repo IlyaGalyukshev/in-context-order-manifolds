@@ -83,8 +83,13 @@ def main() -> None:
     if args.limit:
         stimuli = stimuli[: args.limit]
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True,
-                                        local_files_only=local_only)
+    try:
+        tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True,
+                                            local_files_only=local_only)
+    except AttributeError:   # gemma fast-tokenizer + transformers 5.0.dev: extra_special_tokens is a
+        tok = AutoTokenizer.from_pretrained(  # list but .keys() is called on it → override with {}
+            spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True,
+            local_files_only=local_only, extra_special_tokens={})
     if is_diffusion and not tok.is_fast:                       # Dream/LLaDA sometimes ship a slow tokenizer;
         tok = AutoTokenizer.from_pretrained(spec.get("tokenizer_id", spec["hf_id"]),  # offsets need a FAST one
                                             use_fast=True, trust_remote_code=True)

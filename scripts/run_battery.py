@@ -80,7 +80,11 @@ def main() -> None:
                       if c >= len(questions[next(st["content_key"] for st in stimuli
                                                  if st["stimulus_id"] == s)])}
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
+    try:
+        tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
+    except AttributeError:   # gemma fast-tokenizer + transformers 5.0.dev: extra_special_tokens is a
+        tok = AutoTokenizer.from_pretrained(  # list but .keys() is called on it → override with {}
+            spec["hf_id"], local_files_only=local_only, extra_special_tokens={})
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
         device_map=device_map, local_files_only=local_only)
