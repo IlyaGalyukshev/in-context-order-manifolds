@@ -99,7 +99,9 @@ def main() -> None:
                for e in st["latent_order"]}
         return sorted(pos, key=pos.get)
 
+    tally = defaultdict(lambda: [0.0, 0])   # q_family -> [score_sum, n] for LIVE running accuracy
     t0, n_done = time.monotonic(), 0
+    total = len(stimuli) - len(done_stims)
     with open(out_path, "a") as f:
         for st in stimuli:
             if st["stimulus_id"] in done_stims:
@@ -108,10 +110,16 @@ def main() -> None:
             raws = runner.run_stimulus(st, qs)
             raw_by_qid = {r["qid"]: r for r in raws}
             mention = mention_order_of(st)
+            sample = None
             for q in qs:
                 raw = raw_by_qid[q["qid"]]
                 scored = score_row(q, raw["completion"], st["latent_order"],
                                    raw["logit_margin"], mention_order=mention)
+                sc = scored.get("score")
+                if sc is not None:
+                    tally[q["family"]][0] += float(sc); tally[q["family"]][1] += 1
+                if sample is None and not scored.get("parse_failed", False):
+                    sample = (q, raw, scored)
                 f.write(json.dumps({
                     "stimulus_id": st["stimulus_id"], "content_key": st["content_key"],
                     "model": args.model, "family": st["family"],
@@ -125,15 +133,21 @@ def main() -> None:
                 }) + "\n")
             f.flush()
             n_done += 1
-            if raws and n_done % args.sample_every == 1:        # guard: empty raws (e.g. all-filtered cell) must not crash the run
-                ex = raws[0]
-                q0 = next(q for q in qs if q["qid"] == ex["qid"])
-                print(f"[sample {st['family']}/{st['condition']}] Q: {q0['text'][:80]}\n"
-                      f"  A: {ex['completion'][:100]!r}", flush=True)
-            if n_done % 25 == 0:
+            # visual sample WITH verdict (frequent) — so you can see it actually answering
+            if sample and n_done % args.sample_every == 1:
+                q0, ex, scd = sample
+                sc = scd.get("score")
+                mark = ("✓" if sc >= 0.999 else f"✗({sc:.2f})") if sc is not None else "?"
+                exp = scd.get("answer_key") or scd.get("expected") or ""
+                print(f"[sample {st['family']}/{q0['family']}] {mark}  Q: {q0['text'][:70]}\n"
+                      f"    got: {ex['completion'][:80]!r}" + (f"  expected: {exp}" if exp else ""),
+                      flush=True)
+            # LIVE running accuracy per question family (intermediate result, not just at the end)
+            if n_done % 20 == 0:
                 dt = (time.monotonic() - t0) / n_done
-                print(f"[{n_done} stimuli] {dt:.1f}s/stim, ETA "
-                      f"{(len(stimuli) - len(done_stims) - n_done) * dt / 60:.0f}min", flush=True)
+                acc = "  ".join(f"{k}={v[0]/v[1]:.2f}" for k, v in sorted(tally.items()) if v[1])
+                print(f"[gate {n_done}/{total} | {dt:.1f}s/stim | ETA {(total-n_done)*dt/60:.0f}min]"
+                      f" running acc: {acc}", flush=True)
 
     # summary
     import pandas as pd
