@@ -70,17 +70,23 @@ def main():
     ap.add_argument("--n-pairs", type=int, default=3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--model-path", default=None, help="cluster/local weights dir (offline, no roster)")
+    ap.add_argument("--role", default="instruct")
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
-    spec = resolve_model(args.models_config, args.model)
+    if args.model_path:                                        # cluster: local weights, no roster
+        spec = {"hf_id": args.model_path, "attn_implementation": "eager", "role": args.role}
+        local_only = True
+    else:
+        spec = resolve_model(args.models_config, args.model); local_only = False
     which = {"readout": "last", "card_mean": "cards", "name": "all"}.get(args.scheme, "all")
     is_qwen = "qwen" in args.model.lower()
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"])
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation=spec.get("attn_implementation", "eager"),
-        device_map="cuda:0").eval()
+        device_map="cuda:0", local_files_only=local_only).eval()
     layers = get_decoder_layers(model); n_layers = len(layers)
     patch_layers = ([int(x) for x in args.patch_layers.split(",")] if args.patch_layers
                     else [max(2, int(n_layers * f)) for f in (0.40, 0.55, 0.70)])

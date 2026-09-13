@@ -130,16 +130,22 @@ def main():
                          "position) instead of adding α·spread → does the answered rank TRACK the imposed "
                          "position? (--alphas are then z-scores, e.g. -1.5,-0.75,0,0.75,1.5)")
     ap.add_argument("--smoke", action="store_true")
+    ap.add_argument("--model-path", default=None, help="cluster/local weights dir (offline, no roster)")
+    ap.add_argument("--role", default="instruct")
     args = ap.parse_args()
 
-    spec = resolve_model(args.models_config, args.model)
+    if args.model_path:                                        # cluster: local weights, no roster
+        spec = {"hf_id": args.model_path, "attn_implementation": "eager", "role": args.role}
+        local_only = True
+    else:
+        spec = resolve_model(args.models_config, args.model); local_only = False
     which = "last" if args.scheme == "readout" else "all"
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"])
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
     is_qwen = "qwen" in args.model.lower()
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation=spec.get("attn_implementation", "eager"),
-        device_map="cuda:0").eval()
+        device_map="cuda:0", local_files_only=local_only).eval()
     layers = get_decoder_layers(model); n_layers = len(layers)
     alphas = [float(a) for a in args.alphas.split(",")]
     stims = [json.loads(l) for l in open(args.stimuli)]
