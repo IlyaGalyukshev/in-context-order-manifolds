@@ -30,8 +30,8 @@ job:
     - bash
     - -lc
     - >
-      pip install -q git+https://github.com/huggingface/transformers.git@main
-      accelerate scipy scikit-learn pyyaml einops sentencepiece protobuf &&
+      pip install -q accelerate scipy scikit-learn pyyaml sentencepiece protobuf &&
       export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
+      python3 -c "import transformers; print('[env] image transformers', transformers.__version__)" &&
       chmod +x /work/run_scripts.sh &&
       bash /work/run_scripts.sh google/gemma-4-31B-it
