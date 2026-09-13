@@ -72,4 +72,4 @@ job:
       export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
       python3 -c "import transformers; print('[env] image transformers', transformers.__version__)" &&
       chmod +x /work/run_scripts.sh &&
-      bash /work/run_scripts.sh google/gemma-4-31B-it
+      bash /work/run_scripts.sh google/gemma-4-31B-it   # gemma-4 loads via trust_remote_code (custom modeling in the repo)
