@@ -148,7 +148,7 @@ for SC in readout card_mean; do
 done
 step "STAGE 10 — steering (graded axis-add + off-axis control)"
 run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --loci card_mean,readout --store rdm+mean --stimuli "$DATA/core/stimuli.jsonl" --out "$OUT/acts_mean" --limit 60
-run python3 "$STE" "${MP[@]}" --acts "$OUT/acts_mean" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib --scheme readout --n-stim 16 --alphas "-8,-4,-2,0,2,4,8" --n-offaxis 4 --out "$OUT/steer.parquet"
+run python3 "$STE" "${MP[@]}" --acts "$OUT/acts_mean" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib --scheme readout --n-stim 16 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 4 --out "$OUT/steer.parquet"
 step "STAGE 10 — E7-Q (order/nonorder probe) + E8 (card-fraction dynamics)"
 for PT in order nonorder; do
   run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --probe --probe-type $PT --store rdm --stimuli "$DATA/core/stimuli.jsonl" --out "$A/e7q_$PT"
