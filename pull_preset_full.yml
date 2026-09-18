@@ -3,7 +3,7 @@
 # artifacts. Used by `bash pull_results.sh --with-acts`. Slow/large download;
 # for the analysis outputs only, use pull_preset.yml (the default).
 job:
-  time_limit: 0h30m0s
+  time_limit: 3h0m0s
   flavor: 2cpu-8ram
   generate_name: manifolds-pull-full
   image: docker-hosted.artifactory.tcsbank.ru/ai-platform/notebook-images/notebook-python-3.12:release-v0.9.12

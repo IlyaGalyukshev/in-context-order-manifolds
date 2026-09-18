@@ -6,7 +6,7 @@
 # pull_preset_full.yml). ignore_mask on the storage mount proved unreliable, so
 # staging with tar --exclude is deterministic instead.
 job:
-  time_limit: 0h20m0s
+  time_limit: 1h0m0s
   flavor: 2cpu-8ram
   generate_name: manifolds-pull
   image: docker-hosted.artifactory.tcsbank.ru/ai-platform/notebook-images/notebook-python-3.12:release-v0.9.12

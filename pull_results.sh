@@ -43,19 +43,13 @@ done
 echo ">> downloading artifacts -> $DST"
 mlc job download artifacts "$NAME" --dst-folder "$DST"
 
-# artifacts arrive as a .zip — unpack it in place so you get real files
-if command -v unzip >/dev/null 2>&1; then
-  find "$DST" -name '*.zip' -type f 2>/dev/null | while read -r z; do
-    echo ">> unzip $(basename "$z")"; unzip -oq "$z" -d "$DST" && rm -f "$z"
-  done
-fi
-
+# artifacts arrive as a .zip; left as-is (unzip yourself when needed)
 N="$(find "$DST" -type f 2>/dev/null | wc -l | tr -d ' ')"
-echo ">> $N files in $DST"
 if [ "${N:-0}" = "0" ]; then
   echo "!! nothing came down — send me 'mlc job logs $NAME' and I'll fix the preset."
 else
-  find "$DST" -maxdepth 3 -type f 2>/dev/null | head -40
-  echo "..."
+  echo ">> downloaded into $DST :"
+  find "$DST" -maxdepth 2 -type f 2>/dev/null
   du -sh "$DST" 2>/dev/null
+  echo ">> it's a .zip — unpack with:  unzip -d $DST $DST/<file>.zip"
 fi
