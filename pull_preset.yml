@@ -1,7 +1,10 @@
-# One-shot PULL job — mounts the persistent `manifolds` storage read-only and
-# publishes every result file (except the big acts/ npz dumps) as job artifacts,
-# so `mlc job download artifacts` fetches all results at once (no per-file UI).
-# Driven by pull_results.sh (submit -> wait -> download into ./results_dl).
+# One-shot PULL job (RESULTS ONLY) — mounts the persistent `manifolds` storage
+# read-only, stages every result file EXCEPT the big acts/ npz dumps into a
+# scratch dir, and publishes that dir as job artifacts. So `mlc job download
+# artifacts` fetches a small results-only bundle. Driven by pull_results.sh.
+# For the raw activations too: `bash pull_results.sh --with-acts` (uses
+# pull_preset_full.yml). ignore_mask on the storage mount proved unreliable, so
+# staging with tar --exclude is deterministic instead.
 job:
   time_limit: 0h20m0s
   flavor: 2cpu-8ram
@@ -18,15 +21,15 @@ job:
 
   output:
     - type: files
-      src: /work/manifolds/
+      src: /tmp/out/
       mask: "**/*"
-      ignore_mask: "**/acts/**"
 
   args:
     - bash
     - -lc
     - >
-      echo '=== total storage ===' && du -sh /work/manifolds &&
-      echo '=== per model ===' && du -sh /work/manifolds/* 2>/dev/null &&
-      echo '=== result files (excluding acts/) ===' &&
-      find /work/manifolds -type f -not -path '*/acts/*' | wc -l && echo files
+      set -e; mkdir -p /tmp/out;
+      echo '=== staging results (excluding acts/) ===';
+      tar cf - --exclude='*/acts/*' --exclude='*/acts' -C /work/manifolds . | tar xf - -C /tmp/out;
+      echo '=== staged size ==='; du -sh /tmp/out;
+      echo '=== staged file count ==='; find /tmp/out -type f | wc -l; echo files

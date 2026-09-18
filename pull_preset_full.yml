@@ -1,0 +1,29 @@
+# PULL job (EVERYTHING incl. raw acts/ activations, ~6+ GB) — mounts the
+# persistent `manifolds` storage read-only and publishes ALL files as job
+# artifacts. Used by `bash pull_results.sh --with-acts`. Slow/large download;
+# for the analysis outputs only, use pull_preset.yml (the default).
+job:
+  time_limit: 0h30m0s
+  flavor: 2cpu-8ram
+  generate_name: manifolds-pull-full
+  image: docker-hosted.artifactory.tcsbank.ru/ai-platform/notebook-images/notebook-python-3.12:release-v0.9.12
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: /work/manifolds
+      readwrite: false
+
+  output:
+    - type: files
+      src: /work/manifolds/
+      mask: "**/*"
+
+  args:
+    - bash
+    - -lc
+    - >
+      echo '=== total storage (all, incl acts) ===' && du -sh /work/manifolds &&
+      du -sh /work/manifolds/* 2>/dev/null && find /work/manifolds -type f | wc -l && echo files
