@@ -1,0 +1,32 @@
+# One-shot PULL job — mounts the persistent `manifolds` storage read-only and
+# publishes every result file (except the big acts/ npz dumps) as job artifacts,
+# so `mlc job download artifacts` fetches all results at once (no per-file UI).
+# Driven by pull_results.sh (submit -> wait -> download into ./results_dl).
+job:
+  time_limit: 0h20m0s
+  flavor: 2cpu-8ram
+  generate_name: manifolds-pull
+  image: docker-hosted.artifactory.tcsbank.ru/ai-platform/notebook-images/notebook-python-3.12:release-v0.9.12
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: /work/manifolds
+      readwrite: false
+
+  output:
+    - type: files
+      src: /work/manifolds/
+      mask: "**/*"
+      ignore_mask: "**/acts/**"
+
+  args:
+    - bash
+    - -lc
+    - >
+      echo '=== total storage ===' && du -sh /work/manifolds &&
+      echo '=== per model ===' && du -sh /work/manifolds/* 2>/dev/null &&
+      echo '=== result files (excluding acts/) ===' &&
+      find /work/manifolds -type f -not -path '*/acts/*' | wc -l && echo files
