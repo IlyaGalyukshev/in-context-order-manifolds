@@ -86,9 +86,10 @@ def fit_axis(acts_dir, model, family, condition, scheme, layer, pca=64):
     Xs, ys = [], []
     for f in sorted((Path(acts_dir) / model).glob("*.npz")):
         z = np.load(f, allow_pickle=False); m = json.loads(str(z["meta"]))
-        if m.get("family") == family and m.get("condition") == condition and scheme in z.files \
+        zk = scheme if scheme in z.files else ("mean_" + scheme if ("mean_" + scheme) in z.files else None)
+        if m.get("family") == family and m.get("condition") == condition and zk is not None \
                 and not bool(m.get("is_null", False)):
-            Xs.append(z[scheme][:, layer, :].astype(np.float32))
+            Xs.append(z[zk][:, layer, :].astype(np.float32))   # rdm+mean store: read mean_<scheme>
             r = z["ranks"]; ys.append((r - r.min()) / (r.max() - r.min()))
     if not Xs:
         return None
