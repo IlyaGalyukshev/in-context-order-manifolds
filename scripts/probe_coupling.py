@@ -44,7 +44,8 @@ def load_acts(acts, model, family, condition):
             continue
         if bool(m.get("is_null", False)):
             continue
-        scheme = "readout" if "readout" in z.files else ("loc_readout" if "loc_readout" in z.files else None)
+        scheme = ("readout" if "readout" in z.files else "loc_readout" if "loc_readout" in z.files
+                  else "mean_readout" if "mean_readout" in z.files else None)   # rdm+mean store: k-mean readout
         if scheme is None:
             continue
         recs.append({"sid": _stim_id(f), "entities": json.loads(str(z["entities"])),
