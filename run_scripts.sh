@@ -39,7 +39,7 @@ GATE_LIMIT="${GATE_LIMIT:-150}"   # gate stimuli cap — enough for per-family a
 mkdir -p "$OUT" "$DATA"
 GEN=$WORK/scripts/generate_bcs.py; EXT=$WORK/scripts/extract_repeat.py; PRB=$WORK/scripts/probe_crossnobis.py
 BAT=$WORK/scripts/run_battery.py; PAT=$WORK/scripts/patch_entity.py; STE=$WORK/scripts/steer_rank.py
-FRM=$WORK/scripts/form_select.py
+FRM=$WORK/scripts/form_select.py; COUP=$WORK/scripts/probe_coupling.py
 log(){ echo "[$(date '+%F %T')] $*"; }
 step(){ log "════════════════════ $* ════════════════════"; }
 run(){ log ">> $*"; "$@" && log "   ok" || log "   !! FAILED: $1 (stage continues)"; }
@@ -75,6 +75,7 @@ step "STAGE 0 — datasets (shared, deterministic → identical across models)"
 log "core=$(wc -l <"$DATA/core/stimuli.jsonl" 2>/dev/null) ctrl=$(wc -l <"$DATA/ctrl/stimuli.jsonl" 2>/dev/null) hop=$(wc -l <"$DATA/hop/stimuli.jsonl" 2>/dev/null) struct=$(wc -l <"$DATA/struct/stimuli.jsonl" 2>/dev/null)"
 
 # ---- 1. behaviour gate (core; capped subset — enough for the threshold) ----
+if [ "${CAUSAL_ONLY:-0}" != 1 ]; then   # CAUSAL_ONLY=1 → skip extraction/probes, reuse existing acts_mean+battery (e.g. re-run only steering/coupling on 31B)
 step "STAGE 1 — behaviour gate"
 run python3 "$BAT" "${MP[@]}" --device-map "$DEV" --batch-size "$BATCH" --sample-every 10 --limit "$GATE_LIMIT" \
   --stimuli "$DATA/core/stimuli.jsonl" --questions "$DATA/core/questions.jsonl" --out-dir "$OUT/battery"
@@ -142,13 +143,25 @@ run python3 "$FRM" --acts "$A/struct" "${PM[@]}" --families s0_zib,s0_quomp --co
 run python3 "$FRM" --acts "$A/struct" "${PM[@]}" --families "s1_size|s1_loud" --condition shuffle --scheme card_mean --structure grid2d --templates line,ring,2block,grid --json "$OUT/form_grid.json"
 
 # ---- 10. causal: E9b entity-patch (CIK), steering, E7-Q / E8 ---------------
+fi   # ──────── end non-causal stages (skipped when CAUSAL_ONLY=1) ────────
+
 step "STAGE 10 — E9b entity-substitution patch (CIK toward-B vs toward-C)"
 for SC in readout card_mean; do
   run python3 "$PAT" "${MP[@]}" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib --scheme $SC --n-stim 24 --n-pairs 3 --out "$OUT/e9b_patch_${SC}.parquet"
 done
 step "STAGE 10 — steering (graded axis-add + off-axis control)"
 run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --loci card_mean,readout --store rdm+mean --stimuli "$DATA/core/stimuli.jsonl" --out "$OUT/acts_mean" --limit 60
-run python3 "$STE" "${MP[@]}" --acts "$OUT/acts_mean" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib --scheme readout --n-stim 16 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 4 --out "$OUT/steer.parquet"
+run python3 "$STE" "${MP[@]}" --acts "$OUT/acts_mean" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib,s1_size --scheme readout --n-stim 16 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 8 --out "$OUT/steer.parquet"
+
+# ---- 11. P0.2 coupling: resting geometry → answer correctness (CPU) → canonical coupling/ -----
+step "STAGE 11 — P0.2 coupling (resting margin predicts pair correctness) → coupling/<family>.json"
+mkdir -p "$OUT/coupling"
+for FAM in $FAMS; do
+  run python3 "$COUP" --model "$TAG" --acts "$OUT/acts_mean" --battery "$OUT/battery/battery_$TAG.jsonl" \
+    --questions "$DATA/core/questions.jsonl" --families "$FAM" --q-family pairwise --n-boot 500 \
+    --json "$OUT/coupling/$FAM.json"
+done
+if [ "${CAUSAL_ONLY:-0}" != 1 ]; then   # E7-Q/E8 need fresh extraction → skip in causal-only re-runs
 step "STAGE 10 — E7-Q (order/nonorder probe) + E8 (card-fraction dynamics)"
 for PT in order nonorder; do
   run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --probe --probe-type $PT --store rdm --stimuli "$DATA/core/stimuli.jsonl" --out "$A/e7q_$PT"
@@ -160,5 +173,13 @@ for F in 0.25 0.5 0.75 1.0; do
 done
 
 step "X1 SWEEP DONE — model=$MODEL_ID"
-log "results under $OUT:"; find "$OUT" -maxdepth 1 -type f | sed "s#$OUT/##" | sort
+fi   # end E7-Q/E8 (skipped when CAUSAL_ONLY=1)
+
+# ---- optional: auto-sync results to the canonical HF dataset (online hosts, e.g. DGX) --------
+if [ "${SYNC_HF:-0}" = 1 ]; then
+  step "SYNC — push $OUT to HF dataset (canonical results/<model>/)"
+  run python3 "$WORK/scripts/sync_to_hf.py" "$OUT" ${SYNC_ACTS:+--acts}
+fi
+
+log "results under $OUT:"; find "$OUT" -maxdepth 1 | sed "s#$OUT/##" | sort
 log "(hero figures: run scripts/make_figures.py locally on the pulled JSONs)"

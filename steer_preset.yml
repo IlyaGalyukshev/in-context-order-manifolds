@@ -1,0 +1,91 @@
+# steer_preset.yml — CAUSAL re-run of gemma-4-31B on the mlc H100 platform.
+# Runs ONLY the causal stages (E9b entity-patch, steering along the rank axis,
+# P0.2 coupling) reusing the acts_mean + battery already in the `manifolds`
+# storage from the main run — no re-extraction. Writes canonically to
+# /work/manifolds/google_gemma-4-31B-it/{steer.parquet, coupling/<family>.json,
+# e9b_patch_*.parquet} (persisted in the storage) AND publishes them as small
+# job artifacts for one-shot download.
+#
+#   mlc job submit -p galyukshev --preset-file steer_preset.yml --verbose
+#   bash pull_results.sh --download-only steer-31b-XXXXXX   # grabs the causal artifacts
+#
+# 31B needs an H100 (won't fit V100); the ladder (E2B/E4B/12B) runs steering on
+# the DGX V100s via run_scripts.sh directly.
+job:
+  time_limit: 6h0m0s
+  flavor: h100-2x
+  generate_name: steer-31b
+  image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: "/work/manifolds"
+      readwrite: true
+
+  input:
+    - type: files
+      src: ./
+      dst: "/work/"
+      mask: "run_scripts.sh"
+    - type: files
+      src: ./scripts/
+      dst: "/work/scripts/"
+      mask: "*"
+    - type: files
+      src: ./configs/
+      dst: "/work/configs/"
+      mask: "*"
+    - type: files
+      src: ./data/pools/
+      dst: "/work/data/pools/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/
+      dst: "/work/src/icom/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/battery/
+      dst: "/work/src/icom/battery/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/extraction/
+      dst: "/work/src/icom/extraction/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/generator/
+      dst: "/work/src/icom/generator/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/probes/
+      dst: "/work/src/icom/probes/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/utils/
+      dst: "/work/src/icom/utils/"
+      mask: "*"
+    - type: model_registry
+      mrid: huggingface-proxy/google/gemma-4-31B-it/419b2efe421994fdfd3394e621983d4cc511cd4f
+      dst: /hf_models/
+
+  output:
+    - type: files
+      src: /tmp/out/
+      mask: "**/*"
+
+  args:
+    - bash
+    - -lc
+    - >
+      (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
+      pip install -q accelerate scipy scikit-learn pyyaml sentencepiece protobuf &&
+      export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
+      chmod +x /work/run_scripts.sh &&
+      CAUSAL_ONLY=1 OUT_ROOT=/work/manifolds MODEL_PATH=/hf_models bash /work/run_scripts.sh google/gemma-4-31B-it ;
+      D=/work/manifolds/google_gemma-4-31B-it ; mkdir -p /tmp/out &&
+      cp "$D/steer.parquet" /tmp/out/ 2>/dev/null ;
+      cp -r "$D/coupling" /tmp/out/ 2>/dev/null ;
+      cp "$D"/e9b_patch_*.parquet /tmp/out/ 2>/dev/null ;
+      echo "=== causal artifacts staged ===" && find /tmp/out -type f
