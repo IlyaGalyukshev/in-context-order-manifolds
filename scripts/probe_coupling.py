@@ -104,7 +104,37 @@ def _logit_beta(x, ctrl, yb):
     return float(lr.coef_[0, 0])
 
 
-def run(acts, model, battery, questions, family, condition, q_family, layer, n_boot, seed):
+def _graph(stimuli_path):
+    """stimulus_id → undirected stated-relation graph over entity names (from cards)."""
+    import collections
+    G = {}
+    for line in open(stimuli_path):
+        st = json.loads(line); adj = collections.defaultdict(set)
+        for c in st.get("cards", []):
+            a, b = c.get("entity"), c.get("entity_b")
+            if a and b:
+                adj[a].add(b); adj[b].add(a)
+        G[st["stimulus_id"]] = adj
+    return G
+
+
+def _hops(adj, a, b):
+    if a == b:
+        return 0
+    seen, frontier, d = {a}, [a], 0
+    while frontier:
+        d += 1; nxt = []
+        for u in frontier:
+            for w in adj.get(u, ()):
+                if w == b:
+                    return d
+                if w not in seen:
+                    seen.add(w); nxt.append(w)
+        frontier = nxt
+    return 99
+
+
+def run(acts, model, battery, questions, family, condition, q_family, layer, n_boot, seed, stimuli=None):
     recs = load_acts(acts, model, family, condition)
     if not recs:
         return {"error": "no acts"}
@@ -114,6 +144,7 @@ def run(acts, model, battery, questions, family, condition, q_family, layer, n_b
         d = json.loads(line)
         if d.get("family") == q_family and d.get("target_entities"):
             q[d["qid"]] = (d["target_entities"], d.get("answer_key"))
+    G = _graph(stimuli) if stimuli else None
     rows = []
     for line in open(battery):
         b = json.loads(line)
@@ -129,7 +160,8 @@ def run(acts, model, battery, questions, family, condition, q_family, layer, n_b
         earlier = gold if gold in (a, bb) else a
         later = bb if earlier == a else a
         signed = predmap[(sid, later)] - predmap[(sid, earlier)]   # >0 ⇒ geometry agrees with gold order
-        rows.append((signed, b.get("rank_distance") or 0, int(bool(b["correct"])), sid))
+        hop = _hops(G.get(sid, {}), a, bb) if G is not None else 0
+        rows.append((signed, b.get("rank_distance") or 0, int(bool(b["correct"])), sid, hop))
     if len(rows) < 20:
         return {"error": f"too few joined rows ({len(rows)})", "layer": lyr, "cv_rho": round(cv_rho, 3)}
     signed = np.array([r[0] for r in rows]); rd = np.array([r[1] for r in rows], float)
@@ -145,7 +177,28 @@ def run(acts, model, battery, questions, family, condition, q_family, layer, n_b
         bs.append(_logit_beta(signed[m], rd[m], yb[m]))
     bs = np.array([x for x in bs if x == x])
     ci = [round(float(np.percentile(bs, 2.5)), 3), round(float(np.percentile(bs, 97.5)), 3)] if len(bs) > 2 else [None, None]
-    return dict(model=model, family=family, condition=condition, q_family=q_family, layer=lyr,
+    robust = {}
+    if G is not None:
+        # robust model: correct ~ margin + rank_distance + hop + stated + stimulus fixed effects
+        hop = np.array([min(r[4], 6) for r in rows], float); stated = (hop == 1).astype(float)
+        sid_idx = {u: i for i, u in enumerate(uids)}
+        def design(m):
+            fe = np.zeros((len(m), len(uids))); fe[np.arange(len(m)), [sid_idx[x] for x in sids[m]]] = 1.0
+            return np.column_stack([rd[m], hop[m], stated[m], fe[:, 1:]])
+        allm = np.arange(len(rows))
+        b_rob = _logit_beta(signed, design(allm), yb)
+        rb = []
+        for _ in range(n_boot):
+            pick = rng.choice(uids, len(uids), replace=True)
+            m = np.concatenate([np.where(sids == u)[0] for u in pick])
+            if len(np.unique(yb[m])) < 2:
+                continue
+            rb.append(_logit_beta(signed[m], design(m), yb[m]))
+        rb = np.array([x for x in rb if x == x])
+        rci = [round(float(np.percentile(rb, 2.5)), 3), round(float(np.percentile(rb, 97.5)), 3)] if len(rb) > 2 else [None, None]
+        robust = dict(beta_robust=round(b_rob, 3), beta_robust_ci=rci, sig_robust=bool(rci[0] is not None and rci[0] > 0),
+                      stated_frac=round(float(stated.mean()), 3))
+    return dict(**robust, model=model, family=family, condition=condition, q_family=q_family, layer=lyr,
                 cv_rho=round(cv_rho, 3), n_pairs=len(rows), n_stim=int(len(uids)),
                 accuracy=round(float(yb.mean()), 3), beta_margin=round(beta, 3), beta_ci=ci,
                 sig=bool(ci[0] is not None and ci[0] > 0),
@@ -159,19 +212,22 @@ def main():
     ap.add_argument("--families", default="s0_quomp"); ap.add_argument("--condition", default="shuffle")
     ap.add_argument("--q-family", default="pairwise"); ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--n-boot", type=int, default=1000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--stimuli", default=None,
+                    help="stimuli.jsonl: adds a robust model with hop distance, stated-pair indicator and stimulus FE")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
     results = []
     for family in args.families.split(","):
         r = run(args.acts, args.model, args.battery, args.questions, family, args.condition,
-                args.q_family, args.layer, args.n_boot, args.seed)
+                args.q_family, args.layer, args.n_boot, args.seed, stimuli=args.stimuli)
         results.append(r)
         if "error" in r:
             print(f"{args.model} {family}/{args.q_family}: {r['error']}", flush=True)
         else:
             print(f"{r['model']:14s} {family}/{r['q_family']} L{r['layer']}(cv_rho={r['cv_rho']}) | "
                   f"n_pairs={r['n_pairs']} acc={r['accuracy']} | beta_margin={r['beta_margin']}{r['beta_ci']} "
-                  f"{'SIG' if r['sig'] else 'ns'} (corr={r['corr_margin_correct']})", flush=True)
+                  f"{'SIG' if r['sig'] else 'ns'} (corr={r['corr_margin_correct']})"
+                  + (f" | robust(+hop,stated,stimFE) beta={r['beta_robust']}{r['beta_robust_ci']} {'SIG' if r['sig_robust'] else 'ns'}" if 'beta_robust' in r else ""), flush=True)
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(results, indent=2))

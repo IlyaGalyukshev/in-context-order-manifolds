@@ -191,7 +191,7 @@ if on coupling; then step "STAGE 11 — P0.2 coupling (resting margin predicts p
 mkdir -p "$OUT/coupling"
 for FAM in $FAMS; do
   run python3 "$COUP" --model "$TAG" --acts "$OUT/acts_mean" --battery "$OUT/battery/battery_$TAG.jsonl" \
-    --questions "$DATA/core/questions.jsonl" --families "$FAM" --q-family pairwise --n-boot 500 \
+    --questions "$DATA/core/questions.jsonl" --stimuli "$DATA/core/stimuli.jsonl" --families "$FAM" --q-family pairwise --n-boot 500 \
     --json "$OUT/coupling/$FAM.json"
 done
 fi
