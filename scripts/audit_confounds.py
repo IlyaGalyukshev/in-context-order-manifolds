@@ -14,7 +14,7 @@ Then cross-stimulus, try to decode latent rank from ONLY these role features.
 This proves at the DATA level that the redesign removed the artifact the
 interior-only activation control exposed — without needing GPU.
 
-  python scripts/audit_confounds.py --stimuli <path> [--family relational --condition shuffle]
+  python scripts/audit_confounds.py --stimuli <path> [--family relational --condition shuffle] [--questions <q.jsonl>]
 """
 
 from __future__ import annotations
@@ -53,6 +53,9 @@ def main():
     ap.add_argument("--family", default=None)
     ap.add_argument("--condition", default="shuffle")
     ap.add_argument("--n-max", type=int, default=None, help="filter n_items")
+    ap.add_argument("--questions", default=None,
+                    help="also audit pairwise ANSWER bias: gold = entity named first in the question / "
+                         "mentioned earlier in the prompt text (both should be ~0.5)")
     args = ap.parse_args()
 
     X, y, groups = [], [], []
@@ -95,6 +98,44 @@ def main():
         print("    (v1 linear chain expected HIGH = confound; v2 BCS expected ~0 = clean)")
     else:
         print("--- role features constant across ranks (perfectly balanced) => rank not decodable")
+    if args.questions:
+        answer_bias(args)
+
+
+def answer_bias(args):
+    """Pairwise gold answer vs surface cues. A clean gate needs both rates ≈ 0.5."""
+    import re
+    stims = {}
+    for l in open(args.stimuli):
+        s = json.loads(l)
+        if s.get("condition") != args.condition or (args.family and s.get("family") != args.family):
+            continue
+        if args.n_max and s.get("n_items") != args.n_max:
+            continue
+        stims[s["content_key"]] = s
+    first_q, text_early, n = 0, 0, 0
+    by_dist = defaultdict(lambda: [0, 0])
+    for l in open(args.questions):
+        try:
+            q = json.loads(l)
+        except Exception:
+            continue
+        if q.get("family") != "pairwise" or q.get("stimulus_content_key") not in stims:
+            continue
+        a, b = q["target_entities"]; gold = q["answer_key"]
+        s = stims[q["stimulus_content_key"]]
+        pos = {e: (m.start() if (m := re.search(rf"\b{re.escape(e)}\b", s["prompt"])) else 10**9) for e in (a, b)}
+        qa = q["text"].find(a); qb = q["text"].find(b)
+        first_named = a if (qa >= 0 and (qb < 0 or qa < qb)) else b
+        earlier_in_text = a if pos[a] < pos[b] else b
+        first_q += gold == first_named; text_early += gold == earlier_in_text; n += 1
+        d = by_dist[q.get("rank_distance")]; d[0] += gold == earlier_in_text; d[1] += 1
+    if not n:
+        print("--- answer-bias: no pairwise questions matched"); return
+    print(f"--- PAIRWISE ANSWER BIAS (n={n}; want ≈0.5): gold==first-named-in-question {first_q / n:.3f} | "
+          f"gold==mentioned-earlier-in-text {text_early / n:.3f}")
+    print("    by rank distance (gold==text-earlier): " +
+          "  ".join(f"d{k}:{v[0] / v[1]:.2f}(n={v[1]})" for k, v in sorted(by_dist.items(), key=lambda x: (x[0] is None, x[0]))))
 
 
 if __name__ == "__main__":
