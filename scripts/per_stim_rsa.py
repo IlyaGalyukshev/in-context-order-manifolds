@@ -60,10 +60,22 @@ def main() -> None:
     ap.add_argument("--ideal", default="line", choices=["line", "ring"])
     ap.add_argument("--n-splits", type=int, default=20)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--pair-subsets", default=None,
+                    help="e.g. onehop,multihop: also score each real stimulus on a PAIR SUBSET of the stated-relation "
+                         "graph (needs --stimuli) at the same cross-fitted layer, and test subsets within stimuli")
+    ap.add_argument("--stimuli", default=None, help="stimuli.jsonl (real) for --pair-subsets edge graphs")
+    ap.add_argument("--n-boot", type=int, default=5000)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     Path(args.out).mkdir(parents=True, exist_ok=True)
+    edges = {}
+    if args.pair_subsets and args.stimuli:
+        for line in open(args.stimuli):
+            st = json.loads(line); er = st.get("entity_ranks")
+            if er:
+                edges[st.get("content_key")] = [(er[c["entity"]] - 1, er[c["entity_b"]] - 1) for c in st.get("cards", [])
+                                                if c.get("entity") in er and c.get("entity_b") in er]
     for fam in args.families.split(","):
         kw = dict(n_items=args.n_items, difficulty=args.difficulty)
         real = pc.load_repeat(args.acts, args.model, fam, args.condition, args.scheme, is_null=False, **kw)
@@ -85,10 +97,23 @@ def main() -> None:
         # embedding-layer control: the same per-stimulus RSA at layer 0 (no contextual processing yet)
         real_l0 = {k: float(Sr[i, 0]) for i, k in enumerate(kr)}
         twin_l0 = {k: float(St[j, 0]) for j, k in enumerate(kt)}
+        subsets = {}
+        if args.pair_subsets and edges:
+            for sub in args.pair_subsets.split(","):
+                vals = {}
+                for i, (k, r) in enumerate(zip(kr, real)):
+                    e = edges.get(r.get("content_key"))
+                    ir = pc._interior_rdm(r, layers[1 - hr[i]], args.n_splits, args.seed)
+                    if e is None or ir is None:
+                        continue
+                    rdm, ranks, N = ir
+                    mask = pc._pair_mask(ranks, N, sub, edges=e)
+                    vals[k] = float(pc.whitened_rsa(rdm, pc.line_rdm(ranks), mask=mask))
+                subsets[sub] = vals
         rec = dict(model=args.model, family=fam, scheme=args.scheme, condition=args.condition,
                    n_items=args.n_items, difficulty=args.difficulty, L=int(L),
                    layers={str(h): l for h, l in layers.items()}, real=real_v, twin=twin_v,
-                   real_l0=real_l0, twin_l0=twin_l0)
+                   real_l0=real_l0, twin_l0=twin_l0, real_subsets=subsets)
         fn = Path(args.out) / f"{args.model}__{fam}__{args.scheme}__N{args.n_items}.json"
         json.dump(rec, open(fn, "w"))
         rv = np.array([v for v in real_v.values() if v == v]); tv = np.array([v for v in twin_v.values() if v == v])
@@ -96,6 +121,15 @@ def main() -> None:
               f"twin={tv.mean() if len(tv) else float('nan'):.3f} (n={len(tv)})  incr={rv.mean() - (tv.mean() if len(tv) else np.nan):+.3f}",
               flush=True)
         r0 = np.array([v for v in real_l0.values() if v == v]); t0 = np.array([v for v in twin_l0.values() if v == v])
+        if len(subsets) == 2:
+            a, b = list(subsets)
+            ks = [k for k in subsets[a] if k in subsets[b] and subsets[a][k] == subsets[a][k] and subsets[b][k] == subsets[b][k]]
+            d = np.array([subsets[a][k] - subsets[b][k] for k in ks])
+            rng = np.random.default_rng(args.seed)
+            bs = np.array([d[rng.integers(0, len(d), len(d))].mean() for _ in range(args.n_boot)]) if len(d) else np.array([np.nan])
+            lo, hi = np.percentile(bs, [2.5, 97.5])
+            print(f"{'':28s} {'':9s} within-real {a}={np.mean([subsets[a][k] for k in ks]):.3f} {b}={np.mean([subsets[b][k] for k in ks]):.3f} "
+                  f"diff={d.mean():+.3f} [{lo:+.3f},{hi:+.3f}] n={len(d)}", flush=True)
         print(f"{'':28s} {'':9s} embedding-layer control L0: incr={r0.mean() - (t0.mean() if len(t0) else np.nan):+.3f}", flush=True)
 
 
