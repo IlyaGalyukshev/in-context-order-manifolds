@@ -1,0 +1,85 @@
+# h2_preset.yml — Gemma-4-31B, second confirmatory wave on the mlc H100 platform (closed contour,
+# numbers to the log only). Runs: (1) query-local which-is-earlier (order vs non-order question,
+# real vs twin; scripts/query_pair_decode.py), (2) E7-Q / E8 with twins (run_scripts STAGES=e7q,e8),
+# (3) familiar-token control: 12 months with a non-calendar in-context order (per_stim_rsa
+# --entity-order). Fits the ~10 GB storage (RDM / few-layer final-token states only).
+#
+#   git pull && mlc job submit -p galyukshev --preset-file h2_preset.yml --verbose
+#   J=$(mlc job ls -p galyukshev | awk '/h2-31b/ && /SUCCEEDED/{print $1; exit}')
+#   mlc job logs "$J" | grep -E 'AUC=|order_minus|"auc"|RESULT|EXTERNAL|incr=|e7q|e8_'
+job:
+  time_limit: 24h0m0s
+  flavor: h100-2x
+  generate_name: h2-31b
+  image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: "/work/manifolds"
+      readwrite: true
+
+  input:
+    - type: files
+      src: ./
+      dst: "/work/"
+      mask: "run_scripts.sh"
+    - type: files
+      src: ./scripts/
+      dst: "/work/scripts/"
+      mask: "*"
+    - type: files
+      src: ./configs/
+      dst: "/work/configs/"
+      mask: "*"
+    - type: files
+      src: ./data/pools/
+      dst: "/work/data/pools/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/
+      dst: "/work/src/icom/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/battery/
+      dst: "/work/src/icom/battery/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/extraction/
+      dst: "/work/src/icom/extraction/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/generator/
+      dst: "/work/src/icom/generator/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/probes/
+      dst: "/work/src/icom/probes/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/utils/
+      dst: "/work/src/icom/utils/"
+      mask: "*"
+    - type: model_registry
+      mrid: huggingface-proxy/google/gemma-4-31B-it/419b2efe421994fdfd3394e621983d4cc511cd4f
+      dst: /hf_models/
+
+  args:
+    - bash
+    - -lc
+    - >
+      (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
+      pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
+      export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models PYTHONPATH=/work/src &&
+      cd /work && { du -sh /work/manifolds/* 2>/dev/null || true; } &&
+      python3 scripts/generate_bcs.py --out /work/data/sweep/core --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --n-grid 7,9,12,16 --per-cell 40 --difficulty hard --conditions shuffle &&
+      python3 scripts/generate_bcs.py --out /work/data/months --pool data/pools/entities_months.json --families s0_zib,s0_quomp --n-grid 12 --per-cell 60 --difficulty hard --conditions shuffle &&
+      echo "=== H2.1 query-local ===" &&
+      python3 scripts/query_pair_decode.py --model-path /hf_models --tag gemma-4-31b --stimuli /work/data/sweep/core/stimuli.jsonl --stimuli-null /work/data/sweep/core/stimuli_null.jsonl --families s0_zib,s1_loud --n-items 16 --batch 4 --device auto --out /work/manifolds/query_local ;
+      echo "=== H2.2 months (familiar tokens) ===" &&
+      for S in stimuli stimuli_null; do python3 scripts/extract_repeat.py --model google_gemma-4-31B-it --model-path /hf_models --role instruct --device-map auto --stimuli /work/data/months/$S.jsonl --out /work/manifolds/months/acts --k 6 --loci readout --store rdm; done ;
+      python3 scripts/per_stim_rsa.py --acts /work/manifolds/months/acts --model google_gemma-4-31B-it --families s0_zib,s0_quomp --scheme readout --n-items 12 --entity-order January,February,March,April,May,June,July,August,September,October,November,December --out /work/manifolds/months/dumps ;
+      echo "=== H2.3 E7-Q / E8 with twins ===" &&
+      OUT_ROOT=/work/manifolds DATA_DIR=/work/data/sweep MODEL_PATH=/hf_models DEVICE_MAP=auto STAGES=e7q,e8 bash /work/run_scripts.sh google/gemma-4-31B-it

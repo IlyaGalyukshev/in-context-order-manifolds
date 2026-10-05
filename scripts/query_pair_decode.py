@@ -48,7 +48,8 @@ def final_states(model, tok, texts, layers, device, bs):
         hs = model(**enc, output_hidden_states=True).hidden_states
         last = enc["attention_mask"].sum(1) - 1 if tok.padding_side == "right" else torch.full((enc["input_ids"].shape[0],), enc["input_ids"].shape[1] - 1, device=device)
         rows = torch.arange(enc["input_ids"].shape[0], device=device)
-        out.append(torch.stack([hs[l][rows, last].float().cpu() for l in layers], 1).numpy().astype(np.float16))
+        out.append(torch.stack([hs[l][rows.to(hs[l].device), last.to(hs[l].device)].float().cpu() for l in layers], 1)
+                   .numpy().astype(np.float16))                    # works when layers sit on different GPUs
     return np.concatenate(out, 0)                                      # [n, len(layers), D]
 
 
@@ -60,6 +61,7 @@ def extract(args):
         tok.pad_token = tok.eos_token
     model = AutoModelForCausalLM.from_pretrained(args.model_path, dtype=torch.float16, attn_implementation="eager",
                                                  device_map=args.device, local_files_only=True).eval()
+    dev = str(model.get_input_embeddings().weight.device) if args.device == "auto" else args.device
     cfg = getattr(model.config, "text_config", model.config)
     nl = cfg.num_hidden_layers
     layers = sorted({int(round(f * nl)) for f in (0.3, 0.4, 0.5, 0.6, 0.7)})
@@ -82,7 +84,7 @@ def extract(args):
                 recs["nonorder"].append((x, y, f"Did both the {x} and the {y} appear in the text above? Reply with only yes or no."))
             arrays = {}
             for qt, rr in recs.items():
-                arrays[qt] = final_states(model, tok, [fmt(tok, s["prompt"], q) for _, _, q in rr], layers, args.device, args.batch)
+                arrays[qt] = final_states(model, tok, [fmt(tok, s["prompt"], q) for _, _, q in rr], layers, dev, args.batch)
                 arrays[qt + "_xearlier"] = np.array([int(er[x] < er[y]) for x, y, _ in rr])
                 arrays[qt + "_dist"] = np.array([abs(er[x] - er[y]) for x, y, _ in rr])
             np.savez_compressed(fn, **arrays, layers=np.array(layers),
