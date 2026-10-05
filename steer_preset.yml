@@ -1,6 +1,7 @@
 # steer_preset.yml — CAUSAL re-run of gemma-4-31B on the mlc H100 platform.
-# Runs ONLY the causal stages (E9b entity-patch, steering along the rank axis,
-# P0.2 coupling) reusing the acts_mean + battery already in the `manifolds`
+# Confirmatory steering v2 (pre-registered layer L33 = 55% depth, 49 matched-norm
+# off-axis controls, 32 stimuli) + P0.2 coupling on 200 stimuli; frees the 6 GB raw
+# acts/ first to fit the ~10 GB storage. Runs ONLY these causal stages reusing the acts_mean + battery already in the `manifolds`
 # storage from the main run — no re-extraction, no new big files (fits the ~10 GB
 # closed contour). Results persist (small) in the storage; the NUMBERS are
 # printed by run_scripts.sh's RESULT SUMMARY straight into the job log — read
@@ -13,7 +14,7 @@
 # 31B needs an H100 (won't fit V100); the ladder (E2B/E4B/12B) runs steering on
 # the DGX V100s via run_scripts.sh directly.
 job:
-  time_limit: 6h0m0s
+  time_limit: 16h0m0s
   flavor: h100-2x
   generate_name: steer-31b
   image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
@@ -82,5 +83,10 @@ job:
       (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
       pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
       export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
+      echo "=== storage before ===" && du -sh /work/manifolds/* 2>/dev/null &&
+      rm -rf /work/manifolds/google_gemma-4-31B-it/acts &&
+      echo "=== storage after freeing raw acts ===" && du -sh /work/manifolds/* 2>/dev/null &&
       chmod +x /work/run_scripts.sh &&
-      CAUSAL_ONLY=1 OUT_ROOT=/work/manifolds MODEL_PATH=/hf_models bash /work/run_scripts.sh google/gemma-4-31B-it
+      OUT_ROOT=/work/manifolds MODEL_PATH=/hf_models STAGES=acts_mean,steer,coupling
+      ACTS_MEAN_LIMIT=200 N_OFFAXIS=49 STEER_NSTIM=32 STEER_FAMS=s0_zib,s1_size STEER_SCHEME=readout STEER_LAYERS=33
+      bash /work/run_scripts.sh google/gemma-4-31B-it
