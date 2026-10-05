@@ -6,8 +6,11 @@ Each real stimulus is scored at the layer that maximises mean RSA on the OTHER h
 way. No stimulus is ever evaluated at a layer chosen on itself, and per-stimulus values let
 compare_models.py resample the SAME stimuli jointly across models (paired CIs, TOST, scale slopes).
 
+Also stores the same per-stimulus RSA at layer 0 (embeddings, no context) as a control: a locus whose
+increment already exists at layer 0 reflects stimulus structure, not computation.
+
 Writes one small JSON per (model, family):
-  {model, family, scheme, condition, n_items, L, layers:{"0":l0,"1":l1}, real:{key:rsa}, twin:{key:rsa}}
+  {model, family, scheme, condition, n_items, L, layers, real:{key:rsa}, twin:{key:rsa}, real_l0, twin_l0}
 
   python scripts/per_stim_rsa.py --acts <acts_dir> --model <tag> \
       --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme card_mean --n-items 12 --out <dir>
@@ -79,15 +82,21 @@ def main() -> None:
             layers[h] = int(np.nanargmax(prof))
         real_v = {k: float(Sr[i, layers[1 - hr[i]]]) for i, k in enumerate(kr)}
         twin_v = {k: float(St[j, layers[1 - ht[j]]]) for j, k in enumerate(kt)}
+        # embedding-layer control: the same per-stimulus RSA at layer 0 (no contextual processing yet)
+        real_l0 = {k: float(Sr[i, 0]) for i, k in enumerate(kr)}
+        twin_l0 = {k: float(St[j, 0]) for j, k in enumerate(kt)}
         rec = dict(model=args.model, family=fam, scheme=args.scheme, condition=args.condition,
                    n_items=args.n_items, difficulty=args.difficulty, L=int(L),
-                   layers={str(h): l for h, l in layers.items()}, real=real_v, twin=twin_v)
+                   layers={str(h): l for h, l in layers.items()}, real=real_v, twin=twin_v,
+                   real_l0=real_l0, twin_l0=twin_l0)
         fn = Path(args.out) / f"{args.model}__{fam}__{args.scheme}__N{args.n_items}.json"
         json.dump(rec, open(fn, "w"))
         rv = np.array([v for v in real_v.values() if v == v]); tv = np.array([v for v in twin_v.values() if v == v])
         print(f"{args.model:28s} {fam:9s} L{layers[0]}/{layers[1]} of {L}  real={rv.mean():.3f} (n={len(rv)})  "
               f"twin={tv.mean() if len(tv) else float('nan'):.3f} (n={len(tv)})  incr={rv.mean() - (tv.mean() if len(tv) else np.nan):+.3f}",
               flush=True)
+        r0 = np.array([v for v in real_l0.values() if v == v]); t0 = np.array([v for v in twin_l0.values() if v == v])
+        print(f"{'':28s} {'':9s} embedding-layer control L0: incr={r0.mean() - (t0.mean() if len(t0) else np.nan):+.3f}", flush=True)
 
 
 if __name__ == "__main__":

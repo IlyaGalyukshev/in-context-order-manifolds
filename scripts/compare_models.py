@@ -47,6 +47,8 @@ def main() -> None:
     ap.add_argument("--slope-margin", type=float, default=0.03, help="TOST margin on slope per log10(params)")
     ap.add_argument("--n-boot", type=int, default=5000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--layer0", action="store_true",
+                    help="run the same statistics on the layer-0 (embedding) control values instead")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
 
@@ -57,13 +59,17 @@ def main() -> None:
     for f in glob.glob(os.path.join(args.dumps, "*.json")):
         d = json.load(open(f))
         if d["model"] in models and d["scheme"] == args.scheme:
+            if args.layer0:
+                if "real_l0" not in d:
+                    continue
+                d = {**d, "real": d["real_l0"], "twin": d["twin_l0"]}
             D[(d["model"], d["family"])] = d
     fams = args.families.split(",") if args.families else sorted({f for (_, f) in D})
     rng = np.random.default_rng(args.seed)
     out = {"per_model": [], "pairs": [], "slope": []}
     boot_pool = {m: [] for m in models}                      # per family boot increments, pooled later
 
-    print(f"=== COMPARE [{args.scheme}] models={','.join(labels)} families={','.join(fams)} B={args.n_boot} ===")
+    print(f"=== COMPARE [{args.scheme}{' · LAYER-0 CONTROL' if args.layer0 else ''}] models={','.join(labels)} families={','.join(fams)} B={args.n_boot} ===")
     for fam in fams:
         ms = [m for m in models if (m, fam) in D]
         if not ms:
