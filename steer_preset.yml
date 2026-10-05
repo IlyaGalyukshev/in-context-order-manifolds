@@ -83,9 +83,9 @@ job:
       (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
       pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
       export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
-      echo "=== storage before ===" && du -sh /work/manifolds/* 2>/dev/null &&
+      echo "=== storage before ===" && { du -sh /work/manifolds/* 2>/dev/null || true; } &&
       rm -rf /work/manifolds/google_gemma-4-31B-it/acts &&
-      echo "=== storage after freeing raw acts ===" && du -sh /work/manifolds/* 2>/dev/null &&
+      echo "=== storage after freeing raw acts ===" && { du -sh /work/manifolds/* 2>/dev/null || true; } &&
       chmod +x /work/run_scripts.sh &&
       OUT_ROOT=/work/manifolds MODEL_PATH=/hf_models STAGES=acts_mean,steer,coupling
       ACTS_MEAN_LIMIT=200 N_OFFAXIS=49 STEER_NSTIM=32 STEER_FAMS=s0_zib,s1_size STEER_SCHEME=readout STEER_LAYERS=33
