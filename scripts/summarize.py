@@ -6,7 +6,9 @@ results out — so instead of downloading files, each job prints its findings he
 and we read them from `mlc job logs`. Reads the small JSON result files +
 e9b_patch parquet; steering slopes are already printed inline by steer_rank.py.
 
-  python scripts/summarize.py <OUT_DIR>
+  python scripts/summarize.py <OUT_DIR> [questions.jsonl]
+With questions.jsonl, also prints GATE_LP: pairwise accuracy from the forced-choice log-prob margin
+(graded; informative where generation is at floor in small models).
 """
 from __future__ import annotations
 
@@ -107,6 +109,29 @@ def main() -> None:
                        for k, v in sorted(acc.items()) if v[1]))
         break
 
+    if len(sys.argv) > 2:
+        Q = {}
+        for l in open(sys.argv[2]):
+            try:
+                q = json.loads(l)
+            except Exception:
+                continue
+            if q.get("family") == "pairwise" and q.get("target_entities"):
+                Q[q["qid"]] = q
+        for f in glob.glob(D + "/battery/*.jsonl"):
+            ok = n = 0
+            for l in open(f):
+                try:
+                    r = json.loads(l)
+                except Exception:
+                    continue
+                if r.get("q_family") != "pairwise" or r.get("logit_margin") is None or r.get("qid") not in Q:
+                    continue
+                q = Q[r["qid"]]
+                ok += (r["logit_margin"] > 0) == (q["answer_key"] == q["target_entities"][0]); n += 1
+            if n:
+                out.append("GATE_LP pairwise log-prob accuracy=%.3f (n=%d)" % (ok / n, n))
+            break
     out.append("=== END SUMMARY ===")
     print("\n".join(out), flush=True)
 
