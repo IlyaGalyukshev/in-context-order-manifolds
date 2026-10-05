@@ -44,6 +44,19 @@ def keyed(recs):
     return out
 
 
+def ext_rsa(rec, layer, order):
+    """whitened RSA of the interior crossnobis RDM against an external entity order (rdm store)."""
+    if rec["mode"] != "rdm":
+        return float("nan")
+    R = rec["RDM"][:, :, layer]
+    mask = pc.interior_mask(rec["ranks"], rec["N"]) & np.isfinite(R).all(axis=1)
+    idx = np.where(mask)[0]
+    ents = [rec["entities"][i] for i in idx]
+    if len(idx) < 4 or any(e not in order for e in ents):
+        return float("nan")
+    return float(pc.whitened_rsa(R[np.ix_(idx, idx)], pc.line_rdm(np.array([order[e] for e in ents]))))
+
+
 def profile(recs, L, ideal, n_splits, seed):
     return np.array([[pc._stim_rsa(r, l, ideal, n_splits, seed) for l in range(L)] for r in recs], dtype=float)
 
@@ -65,6 +78,9 @@ def main() -> None:
                          "graph (needs --stimuli) at the same cross-fitted layer, and test subsets within stimuli")
     ap.add_argument("--stimuli", default=None, help="stimuli.jsonl (real) for --pair-subsets edge graphs")
     ap.add_argument("--n-boot", type=int, default=5000)
+    ap.add_argument("--entity-order", default=None,
+                    help="comma list of entity names in an EXTERNAL order (e.g. calendar months): also score each "
+                         "stimulus against that order at the same cross-fitted layer (familiar-token control)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -97,6 +113,12 @@ def main() -> None:
         # embedding-layer control: the same per-stimulus RSA at layer 0 (no contextual processing yet)
         real_l0 = {k: float(Sr[i, 0]) for i, k in enumerate(kr)}
         twin_l0 = {k: float(St[j, 0]) for j, k in enumerate(kt)}
+        ext = {}
+        if args.entity_order:
+            order = {e: i for i, e in enumerate(args.entity_order.split(","))}
+            ext = dict(real_ext={k: ext_rsa(r, layers[1 - hr[i]], order) for i, (k, r) in enumerate(zip(kr, real))},
+                       twin_ext={k: ext_rsa(t, layers[1 - ht[j]], order) for j, (k, t) in enumerate(zip(kt, twin))},
+                       real_ext_l0={k: ext_rsa(r, 0, order) for k, r in zip(kr, real)})
         subsets = {}
         if args.pair_subsets and edges:
             for sub in args.pair_subsets.split(","):
@@ -113,7 +135,7 @@ def main() -> None:
         rec = dict(model=args.model, family=fam, scheme=args.scheme, condition=args.condition,
                    n_items=args.n_items, difficulty=args.difficulty, L=int(L),
                    layers={str(h): l for h, l in layers.items()}, real=real_v, twin=twin_v,
-                   real_l0=real_l0, twin_l0=twin_l0, real_subsets=subsets)
+                   real_l0=real_l0, twin_l0=twin_l0, real_subsets=subsets, **ext)
         fn = Path(args.out) / f"{args.model}__{fam}__{args.scheme}__N{args.n_items}.json"
         json.dump(rec, open(fn, "w"))
         rv = np.array([v for v in real_v.values() if v == v]); tv = np.array([v for v in twin_v.values() if v == v])
@@ -130,6 +152,10 @@ def main() -> None:
             lo, hi = np.percentile(bs, [2.5, 97.5])
             print(f"{'':28s} {'':9s} within-real {a}={np.mean([subsets[a][k] for k in ks]):.3f} {b}={np.mean([subsets[b][k] for k in ks]):.3f} "
                   f"diff={d.mean():+.3f} [{lo:+.3f},{hi:+.3f}] n={len(d)}", flush=True)
+        if ext:
+            mv = lambda d: np.nanmean(list(d.values())) if d else float("nan")
+            print(f"{'':28s} {'':9s} EXTERNAL order: real={mv(ext['real_ext']):.3f} twin={mv(ext['twin_ext']):.3f} "
+                  f"layer0={mv(ext['real_ext_l0']):.3f}  (in-context order above)", flush=True)
         print(f"{'':28s} {'':9s} embedding-layer control L0: incr={r0.mean() - (t0.mean() if len(t0) else np.nan):+.3f}", flush=True)
 
 

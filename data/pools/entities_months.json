@@ -1,0 +1,20 @@
+{
+ "meta": {
+  "version": "months_v1",
+  "note": "familiar-token control: calendar months with an in-context (non-calendar) order"
+ },
+ "names": [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+ ]
+}
