@@ -181,5 +181,6 @@ if [ "${SYNC_HF:-0}" = 1 ]; then
   run python3 "$WORK/scripts/sync_to_hf.py" "$OUT" ${SYNC_ACTS:+--acts}
 fi
 
-log "results under $OUT:"; find "$OUT" -maxdepth 1 | sed "s#$OUT/##" | sort
+step "RESULT SUMMARY — numbers printed to the log (closed contour: read via 'mlc job logs <job>', no file-dragging)"
+python3 "$WORK/scripts/summarize.py" "$OUT" || true
 log "(hero figures: run scripts/make_figures.py locally on the pulled JSONs)"

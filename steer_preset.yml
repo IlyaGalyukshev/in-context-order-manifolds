@@ -1,13 +1,14 @@
 # steer_preset.yml — CAUSAL re-run of gemma-4-31B on the mlc H100 platform.
 # Runs ONLY the causal stages (E9b entity-patch, steering along the rank axis,
 # P0.2 coupling) reusing the acts_mean + battery already in the `manifolds`
-# storage from the main run — no re-extraction. Writes canonically to
-# /work/manifolds/google_gemma-4-31B-it/{steer.parquet, coupling/<family>.json,
-# e9b_patch_*.parquet} (persisted in the storage) AND publishes them as small
-# job artifacts for one-shot download.
+# storage from the main run — no re-extraction, no new big files (fits the ~10 GB
+# closed contour). Results persist (small) in the storage; the NUMBERS are
+# printed by run_scripts.sh's RESULT SUMMARY straight into the job log — read
+# them, don't drag files out:
 #
 #   mlc job submit -p galyukshev --preset-file steer_preset.yml --verbose
-#   bash pull_results.sh --download-only steer-31b-XXXXXX   # grabs the causal artifacts
+#   mlc job logs steer-31b-XXXXXX | sed -n '/=== RESULT SUMMARY/,/=== END SUMMARY/p'
+#   #   plus the inline steering slopes:  mlc job logs steer-31b-XXXXXX | grep along_slope
 #
 # 31B needs an H100 (won't fit V100); the ladder (E2B/E4B/12B) runs steering on
 # the DGX V100s via run_scripts.sh directly.
@@ -70,22 +71,16 @@ job:
       mrid: huggingface-proxy/google/gemma-4-31B-it/419b2efe421994fdfd3394e621983d4cc511cd4f
       dst: /hf_models/
 
-  output:
-    - type: files
-      src: /tmp/out/
-      mask: "**/*"
-
+  # No output artifacts: closed contour, ~10 GB, nothing dragged out. The causal
+  # results (small) persist in the `manifolds` storage, and run_scripts.sh prints
+  # the RESULT SUMMARY (steering slopes, coupling beta, e9b toward-B/C, gate) to
+  # the log — read it with `mlc job logs steer-31b-XXXXXX`.
   args:
     - bash
     - -lc
     - >
       (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
-      pip install -q accelerate scipy scikit-learn pyyaml sentencepiece protobuf &&
+      pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
       export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models &&
       chmod +x /work/run_scripts.sh &&
-      CAUSAL_ONLY=1 OUT_ROOT=/work/manifolds MODEL_PATH=/hf_models bash /work/run_scripts.sh google/gemma-4-31B-it ;
-      D=/work/manifolds/google_gemma-4-31B-it ; mkdir -p /tmp/out &&
-      cp "$D/steer.parquet" /tmp/out/ 2>/dev/null ;
-      cp -r "$D/coupling" /tmp/out/ 2>/dev/null ;
-      cp "$D"/e9b_patch_*.parquet /tmp/out/ 2>/dev/null ;
-      echo "=== causal artifacts staged ===" && find /tmp/out -type f
+      CAUSAL_ONLY=1 OUT_ROOT=/work/manifolds MODEL_PATH=/hf_models bash /work/run_scripts.sh google/gemma-4-31B-it
