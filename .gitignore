@@ -41,3 +41,6 @@ docs/internal/
 
 # local results pulled from mlc_storage (pull_results.sh)
 results_dl/
+
+# v1.1 paper figure data (kept private until submission)
+results_figdata/v11/

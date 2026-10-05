@@ -352,8 +352,100 @@ def fig_manifold(figdata, out, dump):
     plt.close(fig)
 
 
+# ----------------------------------------------------------------------------- v1.1 figures (readout locus)
+FAMCOL = {"s1_size": "#1baf7a", "s0_quomp": "#eb6834", "s0_zib": "#2a78d6", "s1_loud": "#eda100", "s1_heat": "#e87ba4"}
+FAMLAB = {"s1_size": "size", "s0_quomp": "quomp", "s0_zib": "zib", "s1_loud": "loud", "s1_heat": "heat"}
+
+
+def fig_locus(figdata, out, dump):
+    """Input-layer diagnostic: real−twin increment by depth, card-level pooling vs the entity token."""
+    rows = _load(figdata, "v11", "profile_*.json")
+    if not rows:
+        print("  locus: no v11/profile_*.json"); return
+    if dump:
+        for r in rows:
+            print(f"  {r['model']} {r['family']:9s} {r['scheme']:9s} L0={r['increment'][0]:+.3f} peak={max(r['increment']):+.3f}")
+        return
+    plt = _style()
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.6), sharey=True)
+    for ax, sc, title in ((axes[0], "card_mean", "Sentence-level pooling"), (axes[1], "readout", "Entity token (roster)")):
+        for r in [r for r in rows if r["scheme"] == sc]:
+            x = np.arange(r["L"]) / (r["L"] - 1); c = FAMCOL.get(r["family"], "#555")
+            ax.plot(x, r["increment"], color=c, lw=1.6, label=FAMLAB.get(r["family"], r["family"]))
+            ax.fill_between(x, r["ci_lo"], r["ci_hi"], color=c, alpha=0.12, lw=0)
+        ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_title(title); ax.set_xlabel("relative depth (0 = embeddings)")
+    axes[0].set_ylabel("real − twin RSA"); axes[1].legend(frameon=False, ncol=1, loc="upper left")
+    _save(fig, out, "fig_locus")
+
+
+def fig_ladder(figdata, out, dump):
+    """Computed at every scale: per-family increments (FDR) and pooled increment vs the layer-0 control."""
+    cmp_ = _one(figdata, "v11", "cmp_ladder_ro.json"); l0 = _one(figdata, "v11", "cmp_ladder_ro_L0.json")
+    if not cmp_:
+        print("  ladder: no v11/cmp_ladder_ro.json"); return
+    labels = [r["label"] for r in cmp_["pooled"]]
+    if dump:
+        for r in cmp_["per_model"]:
+            print(f"  {r['family']:9s} {r['label']:5s} {r['increment']:+.3f} q={r['q_bh']:.4f}")
+        for r in cmp_["pooled"]:
+            print(f"  pooled {r['label']:5s} {r['increment']:+.3f} {r['ci']}")
+        return
+    plt = _style()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.0, 2.6), gridspec_kw={"width_ratios": [1.35, 1]})
+    x = np.arange(len(labels))
+    for fam in FAMCOL:
+        rr = {r["label"]: r for r in cmp_["per_model"] if r["family"] == fam}
+        if not rr:
+            continue
+        y = [rr[l]["increment"] if l in rr else np.nan for l in labels]
+        sig = [l in rr and rr[l]["q_bh"] < 0.05 and rr[l]["ci"][0] > 0 for l in labels]
+        a.plot(x, y, color=FAMCOL[fam], lw=1.6, label=FAMLAB[fam])
+        a.scatter(x, y, s=28, facecolors=[FAMCOL[fam] if s_ else "white" for s_ in sig], edgecolors=FAMCOL[fam], zorder=3)
+    a.axhline(0, color="#888", lw=0.8, ls="--"); a.set_xticks(x, labels); a.set_ylabel("real − twin RSA (entity token)")
+    a.set_title("Per family (filled = FDR q<.05)"); a.legend(frameon=False, ncol=5, fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.12))
+    pc_ = cmp_["pooled"]
+    b.errorbar(x - 0.08, [r["increment"] for r in pc_], yerr=[[r["increment"] - r["ci"][0] for r in pc_], [r["ci"][1] - r["increment"] for r in pc_]],
+               fmt="o", color="#2a78d6", capsize=3, label="computed (cross-fitted layer)")
+    if l0:
+        p0 = l0["pooled"]
+        b.errorbar(x + 0.08, [r["increment"] for r in p0], yerr=[[r["increment"] - r["ci"][0] for r in p0], [r["ci"][1] - r["increment"] for r in p0]],
+                   fmt="s", color="#9aa2ab", capsize=3, label="layer 0 (input)")
+    b.axhline(0, color="#888", lw=0.8, ls="--"); b.set_xticks(x, labels); b.set_title("Pooled over families [95% CI]"); b.legend(frameon=False, fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=2)
+    _save(fig, out, "fig_ladder")
+
+
+def fig_stated_v11(figdata, out, dump):
+    """Integration: within-stimulus stated (1-hop) − inferred (multi-hop) difference per cell + pooled."""
+    d = _one(figdata, "v11", "sub_ladder.json")
+    if not d:
+        print("  stated_v11: no v11/sub_ladder.json"); return
+    rows = d["rows"]
+    if dump:
+        for r in rows:
+            print(f"  {r['family']:9s} {r['label']:5s} {r['diff']:+.3f} {r['ci']} q={r['q_bh']:.3f}")
+        print("  pooled", d["pooled"]); return
+    plt = _style()
+    order = ["E2B", "E4B", "12B", "31B"]
+    fig, ax = plt.subplots(figsize=(4.6, 2.6))
+    for i, fam in enumerate(FAMCOL):
+        for j, lab in enumerate(order):
+            r = next((r for r in rows if r["family"] == fam and r["label"] == lab), None)
+            if not r:
+                continue
+            xx = j + (i - 2) * 0.12
+            ax.errorbar(xx, r["diff"], yerr=[[r["diff"] - r["ci"][0]], [r["ci"][1] - r["diff"]]], fmt="o", ms=3.5,
+                        color=FAMCOL[fam], capsize=0, lw=1, label=FAMLAB[fam] if j == 0 else None)
+    pl = d["pooled"]
+    ax.axhspan(pl["ci"][0], pl["ci"][1], color="#2a78d6", alpha=0.10, lw=0)
+    ax.axhline(pl["diff"], color="#2a78d6", lw=1.2, label=f"pooled {pl['diff']:+.3f}")
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(4), order)
+    ax.set_ylabel("stated − inferred RSA"); ax.legend(frameon=False, fontsize=6.5, ncol=3)
+    _save(fig, out, "fig_stated_v11")
+
+
 FIGS = {"cpca": fig_cpca, "manifold": fig_manifold, "stated": fig_stated, "e10": fig_e10,
-        "crossform": fig_crossform, "bridge": fig_bridge}
+        "crossform": fig_crossform, "bridge": fig_bridge,
+        "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11}
 
 
 def main():
