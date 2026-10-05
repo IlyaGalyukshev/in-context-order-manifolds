@@ -129,17 +129,18 @@ def make_ablation(layers, head_dim, ablate_set):
 
 
 @torch.no_grad()
-def decode_cell(model, tok, stimuli, is_instruct, layer, family, n_items, device, state):
-    """cv_spearman of interior rank at `layer`/card_mean over these stimuli (ablation per state)."""
+def decode_cell(model, tok, stimuli, is_instruct, layer, family, n_items, device, state, scheme="card_mean"):
+    """cv_spearman of interior rank at `layer`/`scheme` over these stimuli (ablation per state).
+    Use scheme='readout' for the context-free-at-input locus (card_mean carries partner tokens)."""
     from icom.extraction.hooks import extract_pooled
     Xs, ys, gs = [], [], []
     for gi, st in enumerate(stimuli):
         if st.get("family") != family or int(st["n_items"]) != int(n_items):
             continue
         rec = extract_pooled(model, tok, st, is_instruct, device=device)
-        if "card_mean" not in rec["pooled"]:
+        if scheme not in rec["pooled"]:
             continue
-        X = rec["pooled"]["card_mean"][:, layer, :].astype(np.float32)
+        X = rec["pooled"][scheme][:, layer, :].astype(np.float32)
         ranks = rec["ranks"]
         mask = interior_mask(ranks, len(ranks)) & np.isfinite(X).all(axis=1)
         if mask.sum() < 2:
@@ -160,6 +161,7 @@ def main():
     ap.add_argument("--layer", type=int, default=None, help="decode layer; default ~50% depth")
     ap.add_argument("--topk", type=int, default=12); ap.add_argument("--limit", type=int, default=80)
     ap.add_argument("--device", default="cuda:0"); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--scheme", default="card_mean", help="decode locus: card_mean (legacy) | readout (clean)")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
 
@@ -199,8 +201,8 @@ def main():
 
     def gap(state, tag):
         state["on"] = tag != "intact"
-        r = decode_cell(model, tok, real, is_instruct, layer, args.family, args.n_items, args.device, state)
-        t = decode_cell(model, tok, twin, is_instruct, layer, args.family, args.n_items, args.device, state)
+        r = decode_cell(model, tok, real, is_instruct, layer, args.family, args.n_items, args.device, state, scheme=args.scheme)
+        t = decode_cell(model, tok, twin, is_instruct, layer, args.family, args.n_items, args.device, state, scheme=args.scheme)
         state["on"] = False
         return dict(tag=tag, real=round(r, 3), twin=round(t, 3), gap=round(r - t, 3))
 
