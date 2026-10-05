@@ -151,7 +151,7 @@ for SC in readout card_mean; do
 done
 step "STAGE 10 — steering (graded axis-add + off-axis control)"
 run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --loci card_mean,readout --store rdm+mean --stimuli "$DATA/core/stimuli.jsonl" --out "$OUT/acts_mean" --limit 60
-run python3 "$STE" "${MP[@]}" --acts "$OUT/acts_mean" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib,s1_size --scheme readout --n-stim 16 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 8 --out "$OUT/steer.parquet"
+run python3 "$STE" "${MP[@]}" --acts "$OUT/acts_mean" --stimuli "$DATA/core/stimuli.jsonl" --families s0_zib,s1_size --scheme readout --n-stim 16 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 20 --out "$OUT/steer.parquet"
 
 # ---- 11. P0.2 coupling: resting geometry → answer correctness (CPU) → canonical coupling/ -----
 step "STAGE 11 — P0.2 coupling (resting margin predicts pair correctness) → coupling/<family>.json"
