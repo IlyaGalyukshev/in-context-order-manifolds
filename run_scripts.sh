@@ -198,13 +198,17 @@ fi
 
 # ---- 12. E7-Q (order/nonorder probe) + E8 (card-fraction dynamics) ----------
 if on e7q; then step "STAGE 12 — E7-Q (order / non-order probe)"
-for PT in order nonorder; do
-  run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --probe --probe-type $PT --store rdm --stimuli "$DATA/core/stimuli.jsonl" --out "$A/e7q_$PT"
+for PT in ${E7Q_TYPES:-neutral order nonorder}; do
+  for SRC in stimuli stimuli_null; do   # twin too → probe reports real − twin
+    run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --probe --probe-type $PT --store rdm --stimuli "$DATA/core/$SRC.jsonl" --out "$A/e7q_$PT"
+  done
   probe "$OUT/e7q_${PT}.json" --acts "$A/e7q_$PT" "${PM[@]}" --families s0_zib --condition shuffle --scheme probe --probe-type $PT --n-items 12
 done
 fi
 if on e8; then step "STAGE 13 — E8 (card-fraction dynamics)"
-run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --probe --card-fracs "0.25,0.5,0.75,1.0" --store rdm --stimuli "$DATA/core/stimuli.jsonl" --out "$A/e8"
+for SRC in stimuli stimuli_null; do   # twin too → probe reports real − twin
+  run python3 "$EXT" "${MP[@]}" --device-map "$DEV" --k "$K" --probe --card-fracs "0.25,0.5,0.75,1.0" --store rdm --stimuli "$DATA/core/$SRC.jsonl" --out "$A/e8"
+done
 for F in 0.25 0.5 0.75 1.0; do
   probe "$OUT/e8_frac${F}.json" --acts "$A/e8" "${PM[@]}" --families s0_zib --condition shuffle --scheme probe --card-frac $F --n-items 12
 done
