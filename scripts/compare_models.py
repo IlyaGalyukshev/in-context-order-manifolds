@@ -49,8 +49,13 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--layer0", action="store_true",
                     help="run the same statistics on the layer-0 (embedding) control values instead")
+    ap.add_argument("--subsets", default=None,
+                    help="A,B: paired within-real difference of two pair subsets (e.g. onehop,multihop) per "
+                         "model×family, BH-FDR, and pooled over all cells (stimuli resampled jointly)")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
+    if args.subsets:
+        return subsets_mode(args)
 
     models = args.models.split(","); labels = (args.labels or args.models).split(",")
     lab = dict(zip(models, labels))
@@ -155,6 +160,44 @@ def main() -> None:
     print("=== END COMPARE ===")
     if args.json:
         json.dump(out, open(args.json, "w"), indent=1)
+
+
+def subsets_mode(args):
+    a, b = args.subsets.split(",")
+    models = args.models.split(","); lab = dict(zip(models, (args.labels or args.models).split(",")))
+    rng = np.random.default_rng(args.seed); rows, boots = [], []
+    for f in sorted(glob.glob(os.path.join(args.dumps, "*.json"))):
+        d = json.load(open(f))
+        if d["model"] not in models or d["scheme"] != args.scheme or not d.get("real_subsets"):
+            continue
+        if args.families and d["family"] not in args.families.split(","):
+            continue
+        A, Bs = d["real_subsets"].get(a, {}), d["real_subsets"].get(b, {})
+        ks = sorted(k for k in A if k in Bs and A[k] == A[k] and Bs[k] == Bs[k])
+        if len(ks) < 5:
+            continue
+        diff = np.array([A[k] - Bs[k] for k in ks])
+        bs = np.array([diff[rng.integers(0, len(diff), len(diff))].mean() for _ in range(args.n_boot)])
+        p = (1 + int((bs <= 0).sum())) / (1 + args.n_boot)
+        rows.append(dict(model=d["model"], label=lab[d["model"]], family=d["family"], n=len(ks),
+                         diff=float(diff.mean()), ci=list(ci(bs)), p=p))
+        boots.append(bs)
+    if not rows:
+        print("no subset data"); return
+    q = bh([r["p"] for r in rows])
+    print(f"=== SUBSETS [{args.scheme}] {a} − {b} (within real, paired) B={args.n_boot} ===")
+    for r, qq in zip(rows, q):
+        r["q_bh"] = float(qq)
+        print("SUB   %-10s %-14s diff=%+.3f [%+.3f,%+.3f] p=%.4f q=%.4f n=%d %s" % (
+            r["family"], r["label"], r["diff"], r["ci"][0], r["ci"][1], r["p"], qq, r["n"],
+            "SIG" if qq < 0.05 and r["ci"][0] > 0 else ""))
+    pool = np.mean(np.stack(boots, 1), 1); pt = float(np.mean([r["diff"] for r in rows]))
+    lo, hi = ci(pool); pp = (1 + int((pool <= 0).sum())) / (1 + len(pool))
+    npos = sum(r["diff"] > 0 for r in rows)
+    print("POOL  %d cells: mean diff=%+.3f [%+.3f,%+.3f] p=%.4f ; positive in %d/%d cells" % (len(rows), pt, lo, hi, pp, npos, len(rows)))
+    print("=== END SUBSETS ===")
+    if args.json:
+        json.dump(dict(rows=rows, pooled=dict(diff=pt, ci=[lo, hi], p=pp, n_pos=npos, n=len(rows))), open(args.json, "w"), indent=1)
 
 
 if __name__ == "__main__":
