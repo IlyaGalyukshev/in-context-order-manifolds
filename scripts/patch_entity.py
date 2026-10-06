@@ -7,6 +7,9 @@ with a donor activation captured from the block, then read the model's ANSWERED 
   * donor = B (another interior entity, large true-rank gap): does A's answer move TOWARD B's rank?
   * donor = C (a random third interior entity): matched control for "any patch perturbs the answer".
   * donor = None: baseline.
+  * donor = B taken from the content-matched coherence-null TWIN (--twin-stimuli; same entity names,
+    relations form a cycle => no valid rank). If the transferred quantity is the COMPUTED rank, the
+    twin donor must move A toward rank_B no more than the patchC control (identity is matched, order is not).
 Decisive read: patchB moves A's answer toward rank_B significantly more than the patchC control
 => the entity's rank is a causally-used mid-depth code, not an epiphenomenal trace. Mirror-image of
 steer_rank.py (axis-add lever); this is the representation-swap lever (CIK entity-substitution patch).
@@ -72,6 +75,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--model-path", default=None, help="cluster/local weights dir (offline, no roster)")
     ap.add_argument("--role", default="instruct")
+    ap.add_argument("--twin-stimuli", default=None,
+                    help="coherence-null twins (stimuli_null.jsonl): adds the patchBtwin donor condition")
+    ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
@@ -92,6 +98,11 @@ def main():
                     else [max(2, int(n_layers * f)) for f in (0.40, 0.55, 0.70)])
     rng = np.random.default_rng(args.seed)
     stims = [json.loads(l) for l in open(args.stimuli)]
+    twin_of = {}                                               # same family/condition/N/latent_order
+    if args.twin_stimuli:
+        for t in (json.loads(l) for l in open(args.twin_stimuli)):
+            k = (t.get("family"), t.get("condition"), t.get("n_items"), tuple(t["latent_order"]))
+            twin_of.setdefault(k, t)
 
     def chat(text, gen):
         return tok.apply_chat_template([{"role": "user", "content": text}], tokenize=False,
@@ -123,6 +134,13 @@ def main():
             enc_b = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
             with torch.no_grad():
                 hs = model(**enc_b, output_hidden_states=True).hidden_states  # tuple[L+1] of [1,T,D]
+            tw = twin_of.get((s.get("family"), s.get("condition"), s.get("n_items"), tuple(s["latent_order"])))
+            hs_t = block_t = None
+            if tw is not None:
+                block_t = chat(tw["prompt"], gen=False)
+                enc_t = tok(block_t, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                with torch.no_grad():
+                    hs_t = model(**enc_t, output_hidden_states=True).hidden_states
             for (A, B, C, rA, rB, rC) in _pairs_for(s, args.n_pairs, rng):
                 posB = mention_token_ids(block, B, tok, which)
                 posC = mention_token_ids(block, C, tok, which)
@@ -137,10 +155,13 @@ def main():
                 enc_q = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                 if max(qposA) >= enc_q["input_ids"].shape[1]:
                     continue
+                posBt = mention_token_ids(block_t, B, tok, which) if hs_t is not None else None
                 for L in patch_layers:
                     donors = {"baseline": None,
                               "patchB": hs[L][0, posB, :].mean(0).detach().clone(),
                               "patchC": hs[L][0, posC, :].mean(0).detach().clone()}
+                    if posBt:
+                        donors["patchBtwin"] = hs_t[L][0, posBt, :].mean(0).detach().clone()
                     handle = layers[L - 1].register_forward_hook(hook)   # edits hidden_states[L]
                     try:
                         for cond, donor in donors.items():
@@ -167,7 +188,7 @@ def main():
     # ---- decisive read: does patchB move A's answer TOWARD rank_B more than the patchC control? ----
     def _toward_rates(g):
         piv = g.pivot_table(index=["stim", "A", "B"], columns="cond", values="answered", aggfunc="first")
-        for c in ("baseline", "patchB", "patchC"):
+        for c in ("baseline", "patchB", "patchC", "patchBtwin"):
             if c not in piv.columns:
                 piv[c] = np.nan
         meta = g.drop_duplicates(["stim", "A", "B"]).set_index(["stim", "A", "B"])[["true_rank_A", "true_rank_B"]]
@@ -179,27 +200,40 @@ def main():
         exp = np.sign(p["true_rank_B"] - p["true_rank_A"])                    # expected shift direction
         toward_B = (np.sign(p["patchB"] - p["baseline"]) == exp).to_numpy(dtype=float)
         toward_C = (np.sign(p["patchC"] - p["baseline"]) == exp).to_numpy(dtype=float)
-        return piv, toward_B, toward_C
+        toward_Bt = (np.sign(p["patchBtwin"] - p["baseline"]) == exp).to_numpy(dtype=float)
+        has_t = p["patchBtwin"].notna().to_numpy()
+        return piv, toward_B, toward_C, toward_Bt, has_t
+
+    def _boot(x, y, n):
+        bb = np.empty(args.n_boot)
+        for i in range(args.n_boot):
+            idx = rng.integers(0, n, n)
+            bb[i] = x[idx].mean() - y[idx].mean()
+        return float(np.percentile(bb, 2.5)), float(np.percentile(bb, 97.5))
 
     print("=== E9b entity-substitution patch: toward-B rate vs toward-C control (per patch layer) ===")
     for (fam, L), g in df.groupby(["family", "patch_layer"]):
-        piv, tb, tc = _toward_rates(g)          # tb, tc are aligned (same pairs), so len(tb)==len(tc)
+        piv, tb, tc, tbt, has_t = _toward_rates(g)          # tb, tc are aligned (same pairs), so len(tb)==len(tc)
         n = len(tb)
         if n < 2:
             print(f"{fam:8s} {args.scheme:8s} L{L:<2d} | insufficient paired data (n={n})"); continue
         rateB, rateC = float(tb.mean()), float(tc.mean())
         # paired bootstrap CI on (toward_B_rate - toward_C_rate): resample the SAME pair indices
-        bb = np.empty(1000)
-        for i in range(1000):
-            idx = rng.integers(0, n, n)
-            bb[i] = tb[idx].mean() - tc[idx].mean()
-        lo, hi = float(np.percentile(bb, 2.5)), float(np.percentile(bb, 97.5))
+        lo, hi = _boot(tb, tc, n)
         mb = float(np.nanmean(piv["patchB"])); mc = float(np.nanmean(piv["patchC"]))
         m0 = float(np.nanmean(piv["baseline"]))
         sig = "SIG" if lo > 0 else "ns"
         print(f"{fam:8s} {args.scheme:8s} L{L:<2d} | towardB={rateB:.2f} towardC={rateC:.2f} "
               f"Δ={rateB - rateC:+.2f} [{lo:+.2f},{hi:+.2f}] {sig} | "
               f"ans base={m0:.1f} patchB={mb:.1f} patchC={mc:.1f} (n={n})", flush=True)
+        nt = int(has_t.sum())
+        if nt >= 2:                              # twin donor: identity matched, order absent
+            tbm, tcm, ttm = tb[has_t], tc[has_t], tbt[has_t]
+            l1, h1 = _boot(ttm, tcm, nt); l2, h2 = _boot(tbm, ttm, nt)
+            print(f"{fam:8s} {args.scheme:8s} L{L:<2d} | TWIN towardBtwin={ttm.mean():.2f} "
+                  f"Δ(twin−C)={ttm.mean() - tcm.mean():+.2f} [{l1:+.2f},{h1:+.2f}] | "
+                  f"Δ(real−twin)={tbm.mean() - ttm.mean():+.2f} [{l2:+.2f},{h2:+.2f}] "
+                  f"{'SIG' if l2 > 0 else 'ns'} (n={nt})", flush=True)
     print(f"wrote -> {args.out}")
 
 
