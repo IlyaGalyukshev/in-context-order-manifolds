@@ -10,7 +10,7 @@ REPO="${REPO:-allenai/Olmo-3-1025-7B}"
 CKPTS="${CKPTS:-stage1-step10000 stage1-step50000 stage1-step200000 stage1-step600000 stage1-step1413814 stage2-step47684 stage3-step11921}"
 WORK="${WORK_DIR:?}"; DATA="${DATA_DIR:?}"; ROOT="${OUT_ROOT:?}"; CK="${CKPT_DIR:?}"
 FAMS="${FAMS:-s0_zib,s0_quomp,s1_size,s1_loud,s1_heat}"
-export PYTHONPATH="$WORK/src"
+export PYTHONPATH="$WORK/src"; cd "$WORK"   # generator resolves data/pools/ relative to the repo
 # N=12 core only (40/cell x 5 families + twins): the cell the readout ladder is reported on
 [ -f "$DATA/core/stimuli.jsonl" ] || python3 "$WORK/scripts/generate_bcs.py" --out "$DATA/core" \
   --families "$FAMS" --n-grid 12 --per-cell 40 --difficulty hard --conditions shuffle
