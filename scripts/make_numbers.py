@@ -91,7 +91,7 @@ def main():
             put(mname("QsixCardLo"), f3(min(sc), True)); put(mname("QsixCardHi"), f3(max(sc), True))
 
     # ---- no-integration baseline: relative real->twin drop, baseline vs models ----
-    gb = [load(F, "v11/graph_baseline_gemma.json"), load(F, "v11/graph_baseline_qwen.json")]
+    gb = [load(F, "v11/graph_baseline_gemma.json"), load(F, "v11/graph_baseline_qwen.json"), load(F, "v11/graph_baseline_olmo.json")]
     if gb[0]:
         for r in gb[0]["rows"]:
             if r["family"] == "pooled":
@@ -105,12 +105,31 @@ def main():
                 if m["model"] in lab:
                     put(mname("GbModel", lab[m["model"]]), f2(m["rel_drop"])); put(mname("GbModelCI", lab[m["model"]]), ci(m["ci"], 2))
                 ab = {"google_gemma-4-E2B-it": "EtwoB", "google_gemma-4-E4B-it": "EfourB", "google_gemma-4-12B-it": "Gtwelve",
-                      "Qwen_Qwen3-0.6B": "Qzerosix", "Qwen_Qwen3-1.7B": "Qonesev", "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight"}
+                      "Qwen_Qwen3-0.6B": "Qzerosix", "Qwen_Qwen3-1.7B": "Qonesev", "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight",
+                      "allenai_Olmo-3-7B-Instruct": "Olmo"}
                 if m["model"] in ab:
                     put(mname("AbsReal", ab[m["model"]]), f3(m["real"])); put(mname("AbsTwin", ab[m["model"]]), f3(m["twin"]))
                 if m["model"].startswith("google") and m["ci"][0] > next(r["rel_drop"] for r in gb[0]["rows"] if r["family"] == "pooled" and r["hop"] == "1"):
                     above += 1
         put(mname("Gb", "GemmaAbove"), str(above))
+    # noise-matched tallies: each Gemma model compared with tallies whose real RSA matches its own
+    nm = (load(F, "v11/graph_baseline_noise.json") or {}).get("noise_matched", [])
+    if nm and gb[0]:
+        tgt = {"EtwoB": "google_gemma-4-E2B-it", "EfourB": "google_gemma-4-E4B-it", "Gtwelve": "google_gemma-4-12B-it"}
+        mods = {m["model"]: m for m in gb[0]["models"]}
+        above_nm = 0
+        for tag, m in tgt.items():
+            row = mods.get(m)
+            if not row:
+                continue
+            near = [r for r in nm if abs(r["target"] - row["real"]) < 0.006]
+            if not near:
+                continue
+            h1 = next(r for r in near if r["hop"] == "1"); h3 = next(r for r in near if r["hop"] == "3")
+            hinf = next(r for r in near if r["hop"] == "inf")
+            put(mname("NmOne", tag), f2(h1["rel_drop"])); put(mname("NmThree", tag), f2(h3["rel_drop"])); put(mname("NmInf", tag), f2(hinf["rel_drop"]))
+            above_nm += row["ci"][0] > h1["rel_drop"]
+        put(mname("Nm", "Above"), str(above_nm))
 
     # ---- induction-head ablation at the roster token (G7: real - twin rank-decoding gap) ----
     g7 = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(F, "v11", "g7", "e6ro_*top*.json")))]
@@ -161,6 +180,17 @@ def main():
     for k, v in gate.items():
         if v is not None:
             put(mname("Pair", k), f2(v))
+    # symbolic distance effect on inferred pairs: accuracy at rank distance 2-3 vs >= 8 (n-weighted)
+    def band(rows, lo, hi):
+        sel = [(int(d), r) for d, r in rows.items() if lo <= int(d) <= hi]
+        n = sum(r["n"] for _, r in sel)
+        return sum(r["acc"] * r["n"] for _, r in sel) / n if n else None
+    for k, v in C["gate"].items():
+        inf = (v.get("distance") or {}).get("inferred")
+        if inf:
+            near, far = band(inf, 2, 3), band(inf, 8, 99)
+            if near is not None and far is not None:
+                put(mname("SdeNear", k), f2(near)); put(mname("SdeFar", k), f2(far))
     for k, v in C["gate"].items():
         if v.get("pairwise_lp"):
             put(mname("PairLp", k), f2(v["pairwise_lp"]["acc"]))

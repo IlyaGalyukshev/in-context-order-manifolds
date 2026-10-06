@@ -464,7 +464,7 @@ def fig_scale(figdata, out, dump):
     ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xscale("log")
     ax.set_xticks([0.6, 1.7, 4, 8, 12, 31], ["0.6", "1.7", "4", "8", "12", "31"])
     ax.set_xlabel("parameters (B; Gemma-4 E-models: effective)"); ax.set_ylabel("real − twin RSA (pooled)")
-    ax.legend(frameon=False, fontsize=7); ax.set_title("Input-layer control = 0.000 throughout", fontsize=8, fontweight="normal")
+    ax.legend(frameon=False, fontsize=7)
     _save(fig, out, "fig_scale")
 
 

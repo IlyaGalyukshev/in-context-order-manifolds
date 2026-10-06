@@ -32,6 +32,23 @@ def gate_lp(path, Q):
     return {"acc": ok / n, "n": n} if n else None
 
 
+def distance_effect(path, Q, stated):
+    """pairwise accuracy (generated answer) by rank distance, split into stated (one card) and inferred pairs."""
+    acc = {}
+    for line in open(path):
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        q = Q.get(r.get("qid"))
+        if q is None or r.get("score") is None or r.get("rank_distance") is None or r["score"] != r["score"]:
+            continue
+        kind = "stated" if frozenset(q["target_entities"]) in stated.get(r["stimulus_id"], set()) else "inferred"
+        a = acc.setdefault(kind, {}).setdefault(int(r["rank_distance"]), [0.0, 0])
+        a[0] += float(r["score"]); a[1] += 1
+    return {k: {d: {"acc": v[0] / v[1], "n": v[1]} for d, v in sorted(dd.items())} for k, dd in acc.items()}
+
+
 def gate(path):
     acc = {}
     for line in open(path):
@@ -61,6 +78,7 @@ def main():
     ap.add_argument("--battery", nargs="*", default=[])
     ap.add_argument("--steer", nargs="*", default=[])
     ap.add_argument("--questions", default=None)
+    ap.add_argument("--stimuli", default=None)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     res = {"gate": {}, "steer": {}}
@@ -70,8 +88,15 @@ def main():
             q = json.loads(line)
             if q.get("family") == "pairwise" and q.get("target_entities"):
                 Q[q["qid"]] = q
+    stated = {}
+    if a.stimuli:
+        for line in open(a.stimuli):
+            st = json.loads(line)
+            stated[st["stimulus_id"]] = {frozenset((c["entity"], c["entity_b"])) for c in st.get("cards", [])}
     for kv in a.battery:
         tag, path = kv.split("=", 1); res["gate"][tag] = gate(path)
+        if Q and stated:
+            res["gate"][tag]["distance"] = distance_effect(path, Q, stated)
         if Q:
             lp = gate_lp(path, Q)
             if lp:

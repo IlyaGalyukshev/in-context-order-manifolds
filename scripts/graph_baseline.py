@@ -78,6 +78,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0); ap.add_argument("--json", default=None)
     ap.add_argument("--dumps", default=None); ap.add_argument("--models", default=None)
     ap.add_argument("--scheme", default="readout")
+    ap.add_argument("--match-real", default=None,
+                    help="comma list of target real RSA values: add Gaussian noise to each tally (same SD for real "
+                         "and twin) so its mean real RSA matches the target, then report twin and the relative drop")
+    ap.add_argument("--noise-reps", type=int, default=20)
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
     hops = [None if h == "inf" else int(h) for h in a.hops.split(",")]
@@ -108,6 +112,38 @@ def main():
             res["rows"].append(row)
             print(f"hop={hl:>3s} {fam:9s} n={row['n']:3d} real={row['real']:.3f} twin={row['twin']:.3f} "
                   f"incr={row['increment']:+.3f} [{row['ci'][0]:+.3f}, {row['ci'][1]:+.3f}]", flush=True)
+    if a.match_real:
+        res["noise_matched"] = []
+        nrng = np.random.default_rng(a.seed + 1)
+
+        def noisy_mean(h, sd, which):
+            vals = []
+            for s, t in pairs:
+                st = s if which == 0 else t
+                base = scores(claimed_edges(st), int(st["n_items"]), h)
+                for _ in range(a.noise_reps):
+                    v = rsa(s if which == 0 else s, base + nrng.normal(0, sd, len(base))) if False else \
+                        rsa(st, base + nrng.normal(0, sd, len(base)))
+                    if np.isfinite(v):
+                        vals.append(v)
+            return float(np.mean(vals))
+
+        for target in [float(x) for x in a.match_real.split(",")]:
+            for h in hops:
+                lo_sd, hi_sd = 0.0, 50.0
+                for _ in range(18):                       # bisection on the noise SD
+                    mid = (lo_sd + hi_sd) / 2
+                    if noisy_mean(h, mid, 0) > target:
+                        lo_sd = mid
+                    else:
+                        hi_sd = mid
+                sd = (lo_sd + hi_sd) / 2
+                r, w = noisy_mean(h, sd, 0), noisy_mean(h, sd, 1)
+                row = dict(target=target, hop="inf" if h is None else str(h), sd=sd, real=r, twin=w,
+                           rel_drop=float(1 - w / r) if r else float("nan"))
+                res["noise_matched"].append(row)
+                print(f"noise-matched target={target:.3f} hop={row['hop']:>3s} sd={sd:.2f} real={r:.3f} twin={w:.3f} "
+                      f"rel_drop={row['rel_drop']:.3f}", flush=True)
     if a.dumps and a.models:
         res["models"] = []
         for m in a.models.split(","):
