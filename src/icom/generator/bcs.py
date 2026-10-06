@@ -543,8 +543,11 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
                    vocab, d: int = 4, balanced: bool = False,
                    condition: str = "shuffle", incoherent: bool = False,
                    difficulty: str = None, readout: bool = True, declared: str = None,
-                   summary: bool = False, declared_pad: int = 0, hop_gaps=None):
+                   summary: bool = False, declared_pad: int = 0, hop_gaps=None, twin_balanced: bool = False):
     """One BCS stimulus. family is a RELATIONS key. Returns a dict.
+    twin_balanced: for the coherence-null twin, keep the real stimulus's Eulerian first-named assignment
+    (each card names first the same entity as in the real stimulus), so real and twin differ only in the
+    claimed direction of the one reversed relation, not in phrasing statistics.
 
     difficulty overrides `balanced`: 'easy' = banded circulant (order recoverable
     by LOCAL chaining), 'hard' = random-regular (LONG edges, needs GLOBAL
@@ -578,10 +581,14 @@ def build_stimulus(family: str, n_items: int, seed: int, idx: int,
     if incoherent:
         # coherence-null twin: reverse a few edges' claimed direction to inject
         # a cycle (no valid total order); random first-named (control only).
-        for (lo, hi) in _inject_cycle(edge_list, rng):
+        tail_bal = eulerian_orientation(edge_list, n_items) if twin_balanced else None
+        for k, (lo, hi) in enumerate(_inject_cycle(edge_list, rng)):
             e_lo, e_hi = min(lo, hi), max(lo, hi)
             earlier, later = entities[lo], entities[hi]  # as CLAIMED (may be false)
-            flip = bool(rng.integers(2))
+            if twin_balanced:                        # same first-named entity as the real card
+                flip = tail_bal[k] != lo             # first-named is the claimed-later entity
+            else:
+                flip = bool(rng.integers(2))
             text, first, second = _card_text(rel, earlier, later, flip)
             cards.append({"lo": e_lo, "hi": e_hi, "text": text, "entity": first, "entity_b": second})
     else:

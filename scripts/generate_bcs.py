@@ -33,6 +33,8 @@ def main():
     ap.add_argument("--difficulty", default="both", choices=["easy", "hard", "both"],
                     help="easy=banded circulant (local chaining); hard=random-regular (global integration)")
     ap.add_argument("--with-null", action="store_true", default=True)
+    ap.add_argument("--twin-balanced", action="store_true",
+                    help="twins keep the real stimulus's Eulerian first-named assignment (phrasing-matched twins)")
     ap.add_argument("--structures", action="store_true",
                     help="also emit partial-order (2 chains) + 2D-grid stimuli")
     ap.add_argument("--struct-per-cell", type=int, default=100)
@@ -103,7 +105,7 @@ def main():
                         if args.with_null:
                             z = build_stimulus(fam, N, SEED, idx, vocab, d=args.degree,
                                                difficulty=diff, condition="shuffle",
-                                               incoherent=True)
+                                               incoherent=True, twin_balanced=args.twin_balanced)
                             fn.write(json.dumps(z) + "\n"); n_null += 1
                         # E2 declared variants: share entities+order with D1 (this cell)
                         for dmode in [m for m in args.declared.split(",") if m]:
