@@ -10,6 +10,9 @@ with a donor activation captured from the block, then read the model's ANSWERED 
   * donor = B taken from the content-matched coherence-null TWIN (--twin-stimuli; same entity names,
     relations form a cycle => no valid rank). If the transferred quantity is the COMPUTED rank, the
     twin donor must move A toward rank_B no more than the patchC control (identity is matched, order is not).
+  * --cross-donor: donors taken from ANOTHER stimulus with no shared names - the entity holding rank_B
+    there (patchBx) vs the entity holding rank_C there (patchCx). Identity is foreign in both, so a
+    patchBx > patchCx difference is carried by rank, not by the donor's name binding.
 Decisive read: patchB moves A's answer toward rank_B significantly more than the patchC control
 => the entity's rank is a causally-used mid-depth code, not an epiphenomenal trace. Mirror-image of
 steer_rank.py (axis-add lever); this is the representation-swap lever (CIK entity-substitution patch).
@@ -78,6 +81,8 @@ def main():
     ap.add_argument("--twin-stimuli", default=None,
                     help="coherence-null twins (stimuli_null.jsonl): adds the patchBtwin donor condition")
     ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--cross-donor", action="store_true",
+                    help="add patchBx/patchCx donors from another stimulus with disjoint names (rank vs identity)")
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
 
@@ -124,6 +129,8 @@ def main():
     want_decl = (None if args.declared == "none" else args.declared) if args.declared != "__any__" else "__any__"
     rows = []
     for family in args.families.split(","):
+        fam_all = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
+                   and s.get("structure", "total_order") == "total_order" and not bool(s.get("incoherent", False))]
         pool = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
                 and s.get("structure", "total_order") == "total_order"
                 and not bool(s.get("incoherent", False))
@@ -141,6 +148,18 @@ def main():
                 enc_t = tok(block_t, return_tensors="pt", add_special_tokens=False).to("cuda:0")
                 with torch.no_grad():
                     hs_t = model(**enc_t, output_hidden_states=True).hidden_states
+            hs_x = block_x = s_x = None
+            if args.cross_donor:                                   # disjoint-name stimulus of the same length
+                names = set(s["latent_order"]); k0 = fam_all.index(s) if s in fam_all else 0
+                for j in range(1, len(fam_all)):
+                    c = fam_all[(k0 + j) % len(fam_all)]
+                    if c["n_items"] == s["n_items"] and not (set(c["latent_order"]) & names):
+                        s_x = c; break
+                if s_x is not None:
+                    block_x = chat(s_x["prompt"], gen=False)
+                    enc_x = tok(block_x, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                    with torch.no_grad():
+                        hs_x = model(**enc_x, output_hidden_states=True).hidden_states
             for (A, B, C, rA, rB, rC) in _pairs_for(s, args.n_pairs, rng):
                 posB = mention_token_ids(block, B, tok, which)
                 posC = mention_token_ids(block, C, tok, which)
@@ -156,12 +175,21 @@ def main():
                 if max(qposA) >= enc_q["input_ids"].shape[1]:
                     continue
                 posBt = mention_token_ids(block_t, B, tok, which) if hs_t is not None else None
+                posBx = posCx = None
+                if hs_x is not None:
+                    rk = _ranks_of(s_x); inv = {v: e for e, v in rk.items()}
+                    if rB in inv and rC in inv:
+                        posBx = mention_token_ids(block_x, inv[rB], tok, which)
+                        posCx = mention_token_ids(block_x, inv[rC], tok, which)
                 for L in patch_layers:
                     donors = {"baseline": None,
                               "patchB": hs[L][0, posB, :].mean(0).detach().clone(),
                               "patchC": hs[L][0, posC, :].mean(0).detach().clone()}
                     if posBt:
                         donors["patchBtwin"] = hs_t[L][0, posBt, :].mean(0).detach().clone()
+                    if posBx and posCx:
+                        donors["patchBx"] = hs_x[L][0, posBx, :].mean(0).detach().clone()
+                        donors["patchCx"] = hs_x[L][0, posCx, :].mean(0).detach().clone()
                     handle = layers[L - 1].register_forward_hook(hook)   # edits hidden_states[L]
                     try:
                         for cond, donor in donors.items():
@@ -188,7 +216,7 @@ def main():
     # ---- decisive read: does patchB move A's answer TOWARD rank_B more than the patchC control? ----
     def _toward_rates(g):
         piv = g.pivot_table(index=["stim", "A", "B"], columns="cond", values="answered", aggfunc="first")
-        for c in ("baseline", "patchB", "patchC", "patchBtwin"):
+        for c in ("baseline", "patchB", "patchC", "patchBtwin", "patchBx", "patchCx"):
             if c not in piv.columns:
                 piv[c] = np.nan
         meta = g.drop_duplicates(["stim", "A", "B"]).set_index(["stim", "A", "B"])[["true_rank_A", "true_rank_B"]]
@@ -202,6 +230,9 @@ def main():
         toward_C = (np.sign(p["patchC"] - p["baseline"]) == exp).to_numpy(dtype=float)
         toward_Bt = (np.sign(p["patchBtwin"] - p["baseline"]) == exp).to_numpy(dtype=float)
         has_t = p["patchBtwin"].notna().to_numpy()
+        _toward_rates.cross = ((np.sign(p["patchBx"] - p["baseline"]) == exp).to_numpy(dtype=float),
+                               (np.sign(p["patchCx"] - p["baseline"]) == exp).to_numpy(dtype=float),
+                               (p["patchBx"].notna() & p["patchCx"].notna()).to_numpy())
         return piv, toward_B, toward_C, toward_Bt, has_t
 
     def _boot(x, y, n):
@@ -234,6 +265,13 @@ def main():
                   f"Δ(twin−C)={ttm.mean() - tcm.mean():+.2f} [{l1:+.2f},{h1:+.2f}] | "
                   f"Δ(real−twin)={tbm.mean() - ttm.mean():+.2f} [{l2:+.2f},{h2:+.2f}] "
                   f"{'SIG' if l2 > 0 else 'ns'} (n={nt})", flush=True)
+        tbx, tcx, has_x = _toward_rates.cross
+        nx = int(has_x.sum())
+        if nx >= 2:                              # cross-stimulus donors: foreign identity, rank_B vs rank_C
+            bx, cx = tbx[has_x], tcx[has_x]
+            l3, h3 = _boot(bx, cx, nx)
+            print(f"{fam:8s} {args.scheme:8s} L{L:<2d} | CROSS towardBx={bx.mean():.2f} towardCx={cx.mean():.2f} "
+                  f"Δ(Bx−Cx)={bx.mean() - cx.mean():+.2f} [{l3:+.2f},{h3:+.2f}] {'SIG' if l3 > 0 else 'ns'} (n={nx})", flush=True)
     print(f"wrote -> {args.out}")
 
 

@@ -77,6 +77,37 @@ def main():
         put(mname("Ro", "PeakDepthLo"), f"{int(round(100 * min(fr)))}")
         put(mname("Ro", "PeakDepthHi"), f"{int(round(100 * max(fr)))}")
 
+    # ---- pooling artefact in a model at chance (Qwen3-0.6B, same probe for both loci) ----
+    q6 = {}
+    for f in glob.glob(os.path.join(F, "v11", "qwen06", "rsa_*_N12.json")):
+        r = json.load(open(f)); r = r[0] if isinstance(r, list) else r
+        q6[os.path.basename(f)] = r
+    if q6:
+        cm = [r for k, r in q6.items() if "card_mean" in k]; rr = [r for k, r in q6.items() if "readout" in k]
+        put(mname("QsixCardSig"), str(sum(bool(r.get("sig_vs_twin")) for r in cm))); put(mname("QsixCardN"), str(len(cm)))
+        put(mname("QsixRoSig"), str(sum(bool(r.get("sig_vs_twin")) for r in rr)))
+        sc = [r["increment"] for r in cm if r.get("sig_vs_twin")]
+        if sc:
+            put(mname("QsixCardLo"), f3(min(sc), True)); put(mname("QsixCardHi"), f3(max(sc), True))
+
+    # ---- no-integration baseline: relative real->twin drop, baseline vs models ----
+    gb = [load(F, "v11/graph_baseline_gemma.json"), load(F, "v11/graph_baseline_qwen.json")]
+    if gb[0]:
+        for r in gb[0]["rows"]:
+            if r["family"] == "pooled":
+                put(mname("GbDrop", "hop", r["hop"]), f2(r["rel_drop"])); put(mname("GbIncr", "hop", r["hop"]), f3(r["increment"], True))
+                put(mname("GbReal", "hop", r["hop"]), f3(r["real"])); put(mname("GbTwin", "hop", r["hop"]), f3(r["twin"]))
+        lab = {"google_gemma-4-E2B-it": "EtwoB", "google_gemma-4-E4B-it": "EfourB", "google_gemma-4-12B-it": "Gtwelve",
+               "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight"}
+        above = 0
+        for d in gb:
+            for m in (d or {}).get("models", []):
+                if m["model"] in lab:
+                    put(mname("GbModel", lab[m["model"]]), f2(m["rel_drop"])); put(mname("GbModelCI", lab[m["model"]]), ci(m["ci"], 2))
+                if m["model"].startswith("google") and m["ci"][0] > next(r["rel_drop"] for r in gb[0]["rows"] if r["family"] == "pooled" and r["hop"] == "1"):
+                    above += 1
+        put(mname("Gb", "GemmaAbove"), str(above))
+
     # ---- thin axis (contrastive vs plain PCA rank decoding at the roster token) ----
     for f in sorted(glob.glob(os.path.join(F, "cpu_probes_20260824", "cpca_*_readout.json"))):
         r = json.load(open(f))[0]
@@ -165,6 +196,14 @@ def main():
             put(mname("SteerPThirtyone", fam.split("_")[1]), f"{st[fam]['p']:.2f}")
     if "s0_zib" in st and "answered_along" in st["s0_zib"]:
         put(mname("Dose", "Lo"), f"{st['s0_zib']['answered_along'][0]:.1f}"); put(mname("Dose", "Hi"), f"{st['s0_zib']['answered_along'][-1]:.1f}")
+    for fam in ("s0_zib", "s1_size"):
+        if fam in st and st[fam].get("offaxis_sd"):
+            z = (st[fam]["along_slope"] - st[fam]["offaxis_mean"]) / st[fam]["offaxis_sd"]
+            put(mname("SteerZThirtyone", fam.split("_")[1]), f"{z:.0f}")
+    for tag, s_ in C["steer"].items():
+        for fam, r in s_.items():
+            if r["null_sd"] > 0:
+                put(mname("SteerZ", tag.replace("_", ""), fam.split("_")[1]), f"{(r['along_slope'] - r['null_mean']) / r['null_sd']:.1f}".replace("-", "$-$"))
     put(mname("Steer", "NOff"), str(st.get("n_offaxis", 49))); put(mname("Steer", "PFloor"), f"{1 / (st.get('n_offaxis', 49) + 1):.2f}")
     for tag, s in C["steer"].items():
         for fam, r in s.items():
@@ -193,6 +232,10 @@ def main():
     # ---- confound audit ----
     t = open(os.path.join(F, "v11", "audit_core.txt")).read() if os.path.exists(os.path.join(F, "v11", "audit_core.txt")) else ""
     m = re.search(r"PAIRWISE ANSWER BIAS \(n=(\d+);.*?first-named-in-question ([\d.]+) \| gold==mentioned-earlier-in-text ([\d.]+)", t)
+    for feat, nm in (("mention_count", "Mention"), ("subj_frac", "Subj"), ("mean_pos", "Pos")):
+        mm = re.search(rf"{feat}\s+([\d.]+)", t)
+        if mm:
+            put(mname("Audit", nm), f"{float(mm.group(1)):.2f}")
     if m:
         put(mname("Audit", "N"), f"{int(m.group(1)):,}".replace(",", "{,}"))
         put(mname("Audit", "First"), f"{100 * float(m.group(2)):.1f}"); put(mname("Audit", "Earlier"), f"{100 * float(m.group(3)):.1f}")
