@@ -557,7 +557,7 @@ def fig_causal(figdata, out, dump):
             print(f"  31B {r['family']:8s} L{r['layer']} B {r['towardB']} C {r['towardC']} Btwin {r['towardBtwin']} d {r['delta']} {r['ci']}")
         return
     plt = _style()
-    fig, (a, b) = plt.subplots(1, 2, figsize=(7.0, 2.5), gridspec_kw={"width_ratios": [1, 1.3]})
+    fig, (a, b) = plt.subplots(2, 1, figsize=(3.6, 5.0), gridspec_kw={"hspace": 0.7})
     if df is not None:
         for fam, ls in (("s0_zib", "-"), ("s1_size", ":")):
             al, off = _dose(df, fam)
@@ -576,7 +576,7 @@ def fig_causal(figdata, out, dump):
             b.bar(xx, ys, w, color=col, hatch=("" if L == 24 else "///"), edgecolor="white", lw=0.3,
                   label=name if li == 0 else None)
     b.set_xticks(x, [f"{FAMLAB[f]}\nL24 | L33" for f in fams], fontsize=7); b.set_ylim(0, 1)
-    b.set_ylabel("answer moves toward donor rank"); b.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.16))
+    b.set_ylabel("toward donor rank"); b.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.22))
     b.set_title("Gemma-4-31B transplant", fontsize=8, fontweight="normal", pad=18)
     _save(fig, out, "fig_causal")
 
@@ -600,7 +600,7 @@ def fig_coupling(figdata, out, dump):
             print(f"  {lab:12s} acc {acc:.3f} robust-sig {sig}/{len(rows[m])}")
         return
     plt = _style()
-    fig, ax = plt.subplots(figsize=(7.0, 2.4))
+    fig, ax = plt.subplots(figsize=(3.6, 2.7))
     for i, (m, lab) in enumerate(COUP_MODELS):
         for j, fam in enumerate(FAMCOL):
             r = rows[m].get(fam)
@@ -612,9 +612,10 @@ def fig_coupling(figdata, out, dump):
     labs = []
     for m, lab in COUP_MODELS:
         acc = np.mean([r["accuracy"] for r in rows[m].values()]) if rows[m] else float("nan")
-        labs.append(f"{lab}\nacc {acc:.2f}")
-    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=7)
-    ax.set_ylabel("β (margin → correct)"); ax.legend(frameon=False, fontsize=7, ncol=5, loc="upper right")
+        labs.append(f"{lab.replace('Gemma-4-', 'G-').replace('Qwen3-', 'Q-').replace('OLMo-3-', 'OLMo-')}\n{acc:.2f}")
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=6.5)
+    ax.set_ylabel("β (margin → correct)"); ax.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper right")
+    ax.set_xlabel("model (mean pairwise accuracy)", fontsize=7)
     _save(fig, out, "fig_coupling")
 
 
