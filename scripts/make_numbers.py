@@ -112,6 +112,19 @@ def main():
                     above += 1
         put(mname("Gb", "GemmaAbove"), str(above))
 
+    # ---- induction-head ablation at the roster token (G7: real - twin rank-decoding gap) ----
+    g7 = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(F, "v11", "g7", "e6ro_*top*.json")))]
+    if g7:
+        cond = lambda r, t: next(c for c in r["conditions"] if c["tag"] == t)
+        kept = sum(cond(r, "ablate_induction")["gap"] >= cond(r, "intact")["gap"] for r in g7)
+        neg = [r for r in g7 if cond(r, "ablate_induction")["gap"] < 0]
+        put(mname("Gseven", "Cells"), str(len(g7))); put(mname("Gseven", "Kept"), str(kept)); put(mname("Gseven", "Neg"), str(len(neg)))
+        put(mname("Gseven", "CopyIntact"), f2(min(r["manipulation"]["copy_intact"] for r in g7)))
+        put(mname("Gseven", "CopyAblHi"), f2(max(r["manipulation"]["copy_ablate_induction"] for r in g7)))
+        put(mname("Gseven", "GapIntactLo"), f3(min(cond(r, "intact")["gap"] for r in g7))); put(mname("Gseven", "GapIntactHi"), f3(max(cond(r, "intact")["gap"] for r in g7)))
+        if neg:
+            put(mname("Gseven", "NegGap"), f3(cond(neg[0], "ablate_induction")["gap"], True))
+
     # ---- thin axis (contrastive vs plain PCA rank decoding at the roster token) ----
     for f in sorted(glob.glob(os.path.join(F, "cpu_probes_20260824", "cpca_*_readout.json"))):
         r = json.load(open(f))[0]
@@ -142,7 +155,10 @@ def main():
     for k, v in gate.items():
         if v is not None:
             put(mname("Pair", k), f2(v))
-    for k in ("E2B", "E4B"):
+    for k, v in C["gate"].items():
+        if v.get("pairwise_lp"):
+            put(mname("PairLp", k), f2(v["pairwise_lp"]["acc"]))
+    for k in rec:
         if rec.get(k) is not None:
             put(mname("Recon", k), f2(rec[k]))
 
@@ -218,7 +234,8 @@ def main():
 
     # ---- coupling (robust model) ----
     cm = {"Gthirtyone": mlc.get("coupling", [])}
-    for tag, m in (("Gtwelve", "google_gemma-4-12B-it"), ("Olmo", "allenai_Olmo-3-7B-Instruct"), ("Qeight", "Qwen_Qwen3-8B"),
+    for tag, m in (("Gtwelve", "google_gemma-4-12B-it"), ("Gefour", "google_gemma-4-E4B-it"), ("Getwo", "google_gemma-4-E2B-it"),
+                   ("Olmo", "allenai_Olmo-3-7B-Instruct"), ("Qeight", "Qwen_Qwen3-8B"),
                    ("Qfour", "Qwen_Qwen3-4B"), ("Qonesev", "Qwen_Qwen3-1.7B"), ("Qzerosix", "Qwen_Qwen3-0.6B")):
         cm[tag] = [r for f in sorted(glob.glob(os.path.join(F, "v11", "coupling", m, "*.json"))) for r in json.load(open(f))]
     qmax = 0

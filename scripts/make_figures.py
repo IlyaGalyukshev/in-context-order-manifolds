@@ -582,6 +582,7 @@ def fig_causal(figdata, out, dump):
 
 
 COUP_MODELS = [("google_gemma-4-31B-it", "Gemma-4-31B"), ("google_gemma-4-12B-it", "Gemma-4-12B"),
+               ("google_gemma-4-E4B-it", "Gemma-4-E4B"), ("google_gemma-4-E2B-it", "Gemma-4-E2B"),
                ("allenai_Olmo-3-7B-Instruct", "OLMo-3-7B"), ("Qwen_Qwen3-8B", "Qwen3-8B"), ("Qwen_Qwen3-4B", "Qwen3-4B"),
                ("Qwen_Qwen3-1.7B", "Qwen3-1.7B"), ("Qwen_Qwen3-0.6B", "Qwen3-0.6B")]
 
@@ -600,20 +601,20 @@ def fig_coupling(figdata, out, dump):
             print(f"  {lab:12s} acc {acc:.3f} robust-sig {sig}/{len(rows[m])}")
         return
     plt = _style()
-    fig, ax = plt.subplots(figsize=(3.6, 2.7))
+    fig, ax = plt.subplots(figsize=(3.6, 2.8))
     for i, (m, lab) in enumerate(COUP_MODELS):
         for j, fam in enumerate(FAMCOL):
             r = rows[m].get(fam)
             if not r:
                 continue
-            xx = i + (j - 2) * 0.13; lo, hi = r["beta_robust_ci"]; sig = lo > 0
+            xx = i + (j - 2) * 0.11; lo, hi = r["beta_robust_ci"]; sig = lo > 0
             ax.errorbar(xx, r["beta_robust"], yerr=[[r["beta_robust"] - lo], [hi - r["beta_robust"]]], fmt="o", ms=3.5,
                         color=FAMCOL[fam], mfc=FAMCOL[fam] if sig else "white", capsize=0, lw=1, label=FAMLAB[fam] if i == 0 else None)
     labs = []
     for m, lab in COUP_MODELS:
         acc = np.mean([r["accuracy"] for r in rows[m].values()]) if rows[m] else float("nan")
-        labs.append(f"{lab.replace('Gemma-4-', 'G-').replace('Qwen3-', 'Q-').replace('OLMo-3-', 'OLMo-')}\n{acc:.2f}")
-    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=6.5)
+        labs.append(f"{lab.replace('Gemma-4-', 'G').replace('Qwen3-', 'Q-').replace('OLMo-3-', 'OLMo-')}\n{acc:.2f}")
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=5.6)
     ax.set_ylabel("β (margin → correct)"); ax.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper right")
     ax.set_xlabel("model (mean pairwise accuracy)", fontsize=7)
     _save(fig, out, "fig_coupling")
