@@ -443,9 +443,33 @@ def fig_stated_v11(figdata, out, dump):
     _save(fig, out, "fig_stated_v11")
 
 
+
+def fig_scale(figdata, out, dump):
+    """Two families on one log-size axis: pooled entity-token increment [95% CI] vs parameters."""
+    G = _one(figdata, "v11", "cmp_ladder_ro.json"); Q = _one(figdata, "v11", "cmp_qwen_ro.json")
+    if not G or not Q:
+        print("  scale: need v11/cmp_ladder_ro.json and v11/cmp_qwen_ro.json"); return
+    size = {"E2B": 2, "E4B": 4, "12B": 12, "31B": 31, "Q0.6B": 0.6, "Q1.7B": 1.7, "Q4B": 4, "Q8B": 8}
+    if dump:
+        for d in (G, Q):
+            for r in d["pooled"]:
+                print(f"  {r['label']:6s} {size[r['label']]:5.1f}B {r['increment']:+.3f} {r['ci']}")
+        return
+    plt = _style()
+    fig, ax = plt.subplots(figsize=(3.6, 2.6))
+    for d, col, name, dx in ((G, "#2a78d6", "Gemma-4", 1.03), (Q, "#eb6834", "Qwen3", 0.97)):
+        xs = [size[r["label"]] * dx for r in d["pooled"]]; ys = [r["increment"] for r in d["pooled"]]
+        lo = [r["increment"] - r["ci"][0] for r in d["pooled"]]; hi = [r["ci"][1] - r["increment"] for r in d["pooled"]]
+        ax.errorbar(xs, ys, yerr=[lo, hi], fmt="o-", color=col, capsize=2.5, lw=1.4, ms=4, label=name)
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xscale("log")
+    ax.set_xticks([0.6, 1.7, 4, 8, 12, 31], ["0.6", "1.7", "4", "8", "12", "31"])
+    ax.set_xlabel("parameters (B; Gemma-4 E-models: effective)"); ax.set_ylabel("real − twin RSA (pooled)")
+    ax.legend(frameon=False, fontsize=7); ax.set_title("Input-layer control = 0.000 throughout", fontsize=8, fontweight="normal")
+    _save(fig, out, "fig_scale")
+
 FIGS = {"cpca": fig_cpca, "manifold": fig_manifold, "stated": fig_stated, "e10": fig_e10,
         "crossform": fig_crossform, "bridge": fig_bridge,
-        "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11}
+        "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11, "scale": fig_scale}
 
 
 def main():
