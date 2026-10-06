@@ -104,6 +104,10 @@ def main():
             for m in (d or {}).get("models", []):
                 if m["model"] in lab:
                     put(mname("GbModel", lab[m["model"]]), f2(m["rel_drop"])); put(mname("GbModelCI", lab[m["model"]]), ci(m["ci"], 2))
+                ab = {"google_gemma-4-E2B-it": "EtwoB", "google_gemma-4-E4B-it": "EfourB", "google_gemma-4-12B-it": "Gtwelve",
+                      "Qwen_Qwen3-0.6B": "Qzerosix", "Qwen_Qwen3-1.7B": "Qonesev", "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight"}
+                if m["model"] in ab:
+                    put(mname("AbsReal", ab[m["model"]]), f3(m["real"])); put(mname("AbsTwin", ab[m["model"]]), f3(m["twin"]))
                 if m["model"].startswith("google") and m["ci"][0] > next(r["rel_drop"] for r in gb[0]["rows"] if r["family"] == "pooled" and r["hop"] == "1"):
                     above += 1
         put(mname("Gb", "GemmaAbove"), str(above))

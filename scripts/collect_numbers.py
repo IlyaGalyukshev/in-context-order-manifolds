@@ -18,6 +18,20 @@ STEER_RE = re.compile(r"^(\S+)\s+(\S+)\s+L(\d+)\s+\|\s+along_slope=([+-]?[\d.]+)
                       r"±([\d.]+)\s+\(n=(\d+)\)\s+p\(\|off\|>=\|along\|\)=([\d.]+)")
 
 
+def gate_lp(path, Q):
+    """pairwise accuracy from the log-prob margin toward the first-named candidate (as summarize.py GATE_LP)."""
+    ok = n = 0
+    for line in open(path):
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        if r.get("q_family") == "pairwise" and r.get("logit_margin") is not None and r.get("qid") in Q:
+            q = Q[r["qid"]]
+            ok += (r["logit_margin"] > 0) == (q["answer_key"] == q["target_entities"][0]); n += 1
+    return {"acc": ok / n, "n": n} if n else None
+
+
 def gate(path):
     acc = {}
     for line in open(path):
@@ -46,17 +60,29 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--battery", nargs="*", default=[])
     ap.add_argument("--steer", nargs="*", default=[])
+    ap.add_argument("--questions", default=None)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     res = {"gate": {}, "steer": {}}
+    Q = {}
+    if a.questions:
+        for line in open(a.questions):
+            q = json.loads(line)
+            if q.get("family") == "pairwise" and q.get("target_entities"):
+                Q[q["qid"]] = q
     for kv in a.battery:
         tag, path = kv.split("=", 1); res["gate"][tag] = gate(path)
+        if Q:
+            lp = gate_lp(path, Q)
+            if lp:
+                res["gate"][tag]["pairwise_lp"] = lp
     for kv in a.steer:
         tag, path = kv.split("=", 1); res["steer"][tag] = steer(path)
     json.dump(res, open(a.out, "w"), indent=1)
     for tag, g in res["gate"].items():
         print(f"gate  {tag:12s} pairwise={g.get('pairwise', {}).get('acc', float('nan')):.3f} "
-              f"reconstruction={g.get('reconstruction', {}).get('acc', float('nan')):.3f}")
+              f"reconstruction={g.get('reconstruction', {}).get('acc', float('nan')):.3f} "
+              f"lp={g.get('pairwise_lp', {}).get('acc', float('nan')):.3f}")
     for tag, s in res["steer"].items():
         for fam, r in s.items():
             print(f"steer {tag:12s} {fam:8s} L{r['layer']} slope={r['along_slope']:+.3f} p={r['p']:.3f}")
