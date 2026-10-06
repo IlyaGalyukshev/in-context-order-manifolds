@@ -1,4 +1,5 @@
 # h4_preset.yml — Gemma-4-31B on the mlc H100 platform (closed contour, numbers to the log only).
+# (3) steering with permuted-rank control axes and a held-out axis at layer 33 (steer_rank --control-axes perm:20 --exclude-steered).
 # (1) E9d transplant with CROSS-STIMULUS donors (patch_entity.py --cross-donor): the donor is the entity
 #     holding rank_B (vs rank_C) in another stimulus with no shared names, so a toward-B shift is carried
 #     by rank, not by the donor's identity; (2) bootstrap CI for the month calibration (compare_models on
@@ -6,9 +7,9 @@
 #
 #   git pull && mlc job submit -p galyukshev --preset-file h4_preset.yml --verbose
 #   J=$(mlc job ls -p galyukshev | awk '/h4-31b/{print $1; exit}')
-#   mlc job logs "$J" | grep -E 'toward|CROSS|TWIN|pooled|incr|Error|Traceback'
+#   mlc job logs "$J" | grep -E 'toward|CROSS|TWIN|POOL|INC|along_slope|parse_rate|Error|Traceback'
 job:
-  time_limit: 20h0m0s
+  time_limit: 24h0m0s
   flavor: h100-2x
   generate_name: h4-31b
   image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
@@ -78,4 +79,6 @@ job:
       echo "=== H4.2 months bootstrap CI ===" &&
       python3 scripts/compare_models.py --dumps /work/manifolds/months/dumps --models google_gemma-4-31B-it --labels G31B --families s0_zib,s0_quomp --scheme readout --json /work/manifolds/months/cmp_months_31b.json ;
       echo "=== H4.1 E9d transplant, cross-stimulus donors ===" &&
-      python3 scripts/patch_entity.py --model gemma-4-31b-it --model-path /hf_models --stimuli /work/data/sweep/core/stimuli.jsonl --twin-stimuli /work/data/sweep/core/stimuli_null.jsonl --cross-donor --families s0_zib,s1_size --scheme readout --patch-layers 24,33 --n-stim 100 --n-pairs 2 --n-boot 2000 --out /work/manifolds/e9d/patch_31b_cross.parquet
+      python3 scripts/patch_entity.py --model gemma-4-31b-it --model-path /hf_models --stimuli /work/data/sweep/core/stimuli.jsonl --twin-stimuli /work/data/sweep/core/stimuli_null.jsonl --cross-donor --families s0_zib,s1_size --scheme readout --patch-layers 24,33 --n-stim 100 --n-pairs 2 --n-boot 2000 --out /work/manifolds/e9d/patch_31b_cross.parquet ;
+      echo "=== H4.3 steering with permuted-rank control axes ===" &&
+      python3 scripts/steer_rank.py --model google_gemma-4-31B-it --model-path /hf_models --role instruct --acts /work/manifolds/google_gemma-4-31B-it/acts_mean --stimuli /work/data/sweep/core/stimuli.jsonl --families s0_zib,s1_size --scheme readout --n-stim 32 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 49 --control-axes perm:20 --exclude-steered --steer-layers 33 --out /work/manifolds/google_gemma-4-31B-it/steer_ctrl.parquet
