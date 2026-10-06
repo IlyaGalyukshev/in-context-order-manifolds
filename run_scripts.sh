@@ -59,7 +59,7 @@ for r in (d if isinstance(d,list) else [d]):
 PY
 }
 probe(){ local j="$1"; shift; run python3 "$PRB" "$@" --json "$j"; rsum "$j"; }
-MP=(--model "$TAG" --model-path "$MODEL_PATH" --role instruct)
+MP=(--model "$TAG" --model-path "$MODEL_PATH" --role "${ROLE:-instruct}")   # ROLE=base for base/stage checkpoints
 PM=(--model "$TAG")
 FAMS="s0_zib s0_quomp s1_size s1_loud s1_heat"
 

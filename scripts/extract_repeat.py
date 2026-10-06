@@ -51,6 +51,8 @@ def main() -> None:
     ap.add_argument("--device-map", default=None,
                     help="transformers device_map (e.g. 'auto' to shard a big model across both H100s). "
                          "Default: --device. With 'auto', inputs go to the input-embedding device.")
+    ap.add_argument("--revision", default=None,
+                    help="HF revision/branch (e.g. OLMo stage checkpoints 'stage1-step100000')")
     ap.add_argument("--role", default="instruct", choices=["instruct", "base"],
                     help="with --model-path: chat-template (instruct) vs raw (base) formatting")
     args = ap.parse_args()
@@ -84,14 +86,14 @@ def main() -> None:
         stimuli = stimuli[: args.limit]
 
     tok = AutoTokenizer.from_pretrained(spec["hf_id"], trust_remote_code=is_diffusion, use_fast=True,
-                                        local_files_only=local_only)
+                                        local_files_only=local_only, revision=args.revision)
     if is_diffusion and not tok.is_fast:                       # Dream/LLaDA sometimes ship a slow tokenizer;
         tok = AutoTokenizer.from_pretrained(spec.get("tokenizer_id", spec["hf_id"]),  # offsets need a FAST one
                                             use_fast=True, trust_remote_code=True)
     if is_diffusion:                                            # E10: diffusion LMs need custom modeling + AutoModel
         from transformers import AutoModel
         model = AutoModel.from_pretrained(spec["hf_id"], dtype=torch.float16, trust_remote_code=True,
-                                          device_map=device_map, local_files_only=local_only).eval()
+                                          device_map=device_map, local_files_only=local_only, revision=args.revision).eval()
         # Dream/LLaDA custom forwards feed a `long` attn_mask into fp16 SDPA on V100 (which rejects
         # int masks); cast any integer mask to bool (1=attend) so the bidirectional read runs.
         import torch.nn.functional as _F
@@ -105,7 +107,7 @@ def main() -> None:
     else:
         model = AutoModelForCausalLM.from_pretrained(
             spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-            device_map=device_map, local_files_only=local_only).eval()
+            device_map=device_map, local_files_only=local_only, revision=args.revision).eval()
 
     # with device_map='auto' the model is sharded across GPUs → inputs go to the input-embedding
     # device, and extract_pooled_repeat moves each hidden-state layer to CPU before stacking.

@@ -32,6 +32,8 @@ def main() -> None:
     ap.add_argument("--model-path", default=None,
                     help="Cluster/local override: load weights from THIS dir (local_files_only), no roster")
     ap.add_argument("--device-map", default=None, help="device_map (e.g. 'auto' to shard across both H100s)")
+    ap.add_argument("--revision", default=None,
+                    help="HF revision/branch (e.g. OLMo stage checkpoints 'stage1-step100000')")
     ap.add_argument("--role", default="instruct", choices=["instruct", "base"])
     args = ap.parse_args()
 
@@ -80,10 +82,10 @@ def main() -> None:
         done_stims = {s for s, c in counts.items()
                       if s in ck_by_sid and c >= len(questions[ck_by_sid[s]])}
 
-    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only, revision=args.revision)
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation="eager",
-        device_map=device_map, local_files_only=local_only)
+        device_map=device_map, local_files_only=local_only, revision=args.revision)
     model.eval()
     try:                                                       # device_map='auto' → inputs to embedding device
         run_device = str(model.get_input_embeddings().weight.device) if device_map == "auto" else args.device
