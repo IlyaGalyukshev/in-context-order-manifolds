@@ -467,9 +467,161 @@ def fig_scale(figdata, out, dump):
     ax.legend(frameon=False, fontsize=7); ax.set_title("Input-layer control = 0.000 throughout", fontsize=8, fontweight="normal")
     _save(fig, out, "fig_scale")
 
+
+# ----------------------------------------------------------------------------- v1.5 figures
+QL_ORDER = [("mlc", "Gemma-4-31B"), ("gemma-4-12b", "Gemma-4-12B"), ("olmo3-7b", "OLMo-3-7B"), ("qwen3-4b", "Qwen3-4B")]
+
+
+def fig_querylocal(figdata, out, dump):
+    """Which-is-earlier AUC at the question's final token: order question vs a non-order question
+    about the same (randomly ordered) pair; real and coherence-null twin."""
+    mlc = _one(figdata, "v11", "mlc_31b.json")
+    rows = []
+    for tag, lab in QL_ORDER:
+        q = (mlc or {}).get("query_local") if tag == "mlc" else _one(figdata, "v11/ql", f"{tag}_summary.json")
+        if q:
+            rows.append((lab, q))
+    if dump:
+        for lab, q in rows:
+            print(f"  {lab:12s} order {q['order_real']['auc']:.3f} nonorder {q['nonorder_real']['auc']:.3f} "
+                  f"diff {q['order_minus_nonorder']['diff']:+.3f} {q['order_minus_nonorder']['ci']} twin-order {q['order_twin']['auc']:.3f}")
+        return
+    plt = _style()
+    fig, ax = plt.subplots(figsize=(3.6, 2.6))
+    x = np.arange(len(rows)); w = 0.2
+    for k, (key, col, name) in enumerate((("order_real", "#2a78d6", "order Q, real"), ("order_twin", "#9cc0ec", "order Q, twin"),
+                                          ("nonorder_real", "#6b7480", "non-order Q, real"))):
+        ys = [q[key]["auc"] for _, q in rows]
+        err = [[q[key]["auc"] - q[key]["ci"][0] for _, q in rows], [q[key]["ci"][1] - q[key]["auc"] for _, q in rows]]
+        ax.bar(x + (k - 1) * w, ys, w, color=col, label=name, yerr=err, capsize=1.5, error_kw={"lw": 0.8})
+    ax.axhline(0.5, color="#888", lw=0.8, ls="--"); ax.set_ylim(0.4, 1.0)
+    ax.set_xticks(x, ["\n".join(l.rsplit("-", 1)) for l, _ in rows], fontsize=7); ax.set_ylabel("which-is-earlier AUC")
+    ax.legend(frameon=False, fontsize=6.5, loc="upper right")
+    _save(fig, out, "fig_querylocal")
+
+
+def fig_months(figdata, out, dump):
+    """Familiar tokens with a non-calendar in-context order: computed in-context increment per model."""
+    d = _one(figdata, "v11", "cmp_months.json"); mlc = _one(figdata, "v11", "mlc_31b.json")
+    lab = {"gemma12b": "Gemma-4-12B", "qwen4b": "Qwen3-4B", "olmo7b": "OLMo-3-7B"}
+    pts = []                                                  # (model, family, inc, lo, hi)
+    for r in (mlc or {}).get("months", []):
+        pts.append(("Gemma-4-31B", r["family"], r["increment"], None, None))
+    for r in (d or {}).get("per_model", []):
+        pts.append((lab.get(r["label"], r["label"]), r["family"], r["increment"], r["ci"][0], r["ci"][1]))
+    models = list(dict.fromkeys(p[0] for p in pts))
+    if dump:
+        for p in pts:
+            print(f"  {p[0]:12s} {p[1]:9s} {p[2]:+.3f} {p[3]} {p[4]}")
+        for r in (mlc or {}).get("months", []):
+            print(f"  31B calendar: real {r['external_real']} twin {r['external_twin']} layer0 {r['external_layer0']}")
+        return
+    plt = _style()
+    fig, ax = plt.subplots(figsize=(3.6, 2.4))
+    for i, m in enumerate(models):
+        for j, fam in enumerate(("s0_zib", "s0_quomp")):
+            p = next((p for p in pts if p[0] == m and p[1] == fam), None)
+            if not p:
+                continue
+            xx = i + (j - 0.5) * 0.25
+            yerr = [[p[2] - p[3]], [p[4] - p[2]]] if p[3] is not None else None
+            ax.errorbar(xx, p[2], yerr=yerr, fmt="o", color=FAMCOL[fam], ms=4, capsize=2, lw=1,
+                        label=FAMLAB[fam] if i == 0 else None)
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(models)), models, fontsize=7)
+    ax.set_ylabel("in-context order: real − twin"); ax.legend(frameon=False, fontsize=7)
+    ax.set_title("Month names, non-calendar order (layer 0 = 0.000)", fontsize=8, fontweight="normal")
+    _save(fig, out, "fig_months")
+
+
+def _dose(df, fam):
+    g = df[df.family == fam]
+    al = g[g.direction == "along"].groupby("alpha")["answered"].mean()
+    off = g[g.direction.str.startswith("offaxis")].groupby(["direction", "alpha"])["answered"].mean().unstack(0)
+    return al, off
+
+
+def fig_causal(figdata, out, dump):
+    """(a) Steering dose-response at a layer fixed in advance (along the rank axis vs 49 matched-norm
+    off-axis directions, 64 stimuli); (b) activation transplant in Gemma-4-31B (toward-donor rate)."""
+    import pandas as pd
+    p = os.path.join(figdata, "v11", "steer", "google_gemma-4-12B-it", "steer_n64.parquet")
+    mlc = _one(figdata, "v11", "mlc_31b.json")
+    tp = [r for r in (mlc or {}).get("transplant", []) if r["layer"] in (24, 33)]
+    df = pd.read_parquet(p) if os.path.exists(p) else None
+    if dump:
+        if df is not None:
+            for fam in ("s0_zib", "s1_size"):
+                al, off = _dose(df, fam)
+                print(f"  12B {fam} along {al.round(2).tolist()} off-mean {off.mean(axis=1).round(2).tolist()}")
+        for r in tp:
+            print(f"  31B {r['family']:8s} L{r['layer']} B {r['towardB']} C {r['towardC']} Btwin {r['towardBtwin']} d {r['delta']} {r['ci']}")
+        return
+    plt = _style()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.0, 2.5), gridspec_kw={"width_ratios": [1, 1.3]})
+    if df is not None:
+        for fam, ls in (("s0_zib", "-"), ("s1_size", ":")):
+            al, off = _dose(df, fam)
+            a.fill_between(off.index, off.quantile(0.025, axis=1), off.quantile(0.975, axis=1), color="#9aa2ab", alpha=0.25, lw=0)
+            a.plot(off.index, off.mean(axis=1), color="#6b7480", lw=1.2, ls=ls)
+            a.plot(al.index, al.values, color=FAMCOL[fam], lw=1.8, ls=ls, marker="o", ms=3, label=f"{FAMLAB[fam]}: along axis")
+        a.plot([], [], color="#6b7480", label="49 off-axis (mean, 95%)")
+    a.set_xlabel("steering strength α (layer 26/48)"); a.set_ylabel("answered position")
+    a.set_title("Gemma-4-12B, 64 stimuli", fontsize=8, fontweight="normal"); a.legend(frameon=False, fontsize=6.5)
+    fams = ["s0_zib", "s1_size", "s1_loud"]; x = np.arange(len(fams)); w = 0.13
+    for li, L in enumerate((24, 33)):
+        for k, (key, col, name) in enumerate((("towardB", "#2a78d6", "donor B (real)"), ("towardBtwin", "#9cc0ec", "donor B (twin)"),
+                                              ("towardC", "#6b7480", "control donor C"))):
+            ys = [next((r[key] for r in tp if r["family"] == f and r["layer"] == L), np.nan) for f in fams]
+            xx = x + (li - 0.5) * 0.42 + (k - 1) * w
+            b.bar(xx, ys, w, color=col, hatch=("" if L == 24 else "///"), edgecolor="white", lw=0.3,
+                  label=name if li == 0 else None)
+    b.set_xticks(x, [f"{FAMLAB[f]}\nL24 | L33" for f in fams], fontsize=7); b.set_ylim(0, 1)
+    b.set_ylabel("answer moves toward donor rank"); b.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.16))
+    b.set_title("Gemma-4-31B transplant", fontsize=8, fontweight="normal", pad=18)
+    _save(fig, out, "fig_causal")
+
+
+COUP_MODELS = [("google_gemma-4-31B-it", "Gemma-4-31B"), ("google_gemma-4-12B-it", "Gemma-4-12B"),
+               ("allenai_Olmo-3-7B-Instruct", "OLMo-3-7B"), ("Qwen_Qwen3-8B", "Qwen3-8B"), ("Qwen_Qwen3-4B", "Qwen3-4B"),
+               ("Qwen_Qwen3-1.7B", "Qwen3-1.7B"), ("Qwen_Qwen3-0.6B", "Qwen3-0.6B")]
+
+
+def fig_coupling(figdata, out, dump):
+    """Resting geometry predicts per-pair correctness: robust coefficient (+hop, stated, stimulus FE)."""
+    mlc = _one(figdata, "v11", "mlc_31b.json")
+    rows = {}
+    for m, _ in COUP_MODELS:
+        rr = (mlc or {}).get("coupling", []) if m == "google_gemma-4-31B-it" else _load(figdata, f"v11/coupling/{m}", "*.json")
+        rows[m] = {r["family"]: r for r in rr if "beta_robust" in r}
+    if dump:
+        for m, lab in COUP_MODELS:
+            sig = sum(1 for r in rows[m].values() if r["beta_robust_ci"][0] > 0)
+            acc = np.mean([r["accuracy"] for r in rows[m].values()]) if rows[m] else float("nan")
+            print(f"  {lab:12s} acc {acc:.3f} robust-sig {sig}/{len(rows[m])}")
+        return
+    plt = _style()
+    fig, ax = plt.subplots(figsize=(7.0, 2.4))
+    for i, (m, lab) in enumerate(COUP_MODELS):
+        for j, fam in enumerate(FAMCOL):
+            r = rows[m].get(fam)
+            if not r:
+                continue
+            xx = i + (j - 2) * 0.13; lo, hi = r["beta_robust_ci"]; sig = lo > 0
+            ax.errorbar(xx, r["beta_robust"], yerr=[[r["beta_robust"] - lo], [hi - r["beta_robust"]]], fmt="o", ms=3.5,
+                        color=FAMCOL[fam], mfc=FAMCOL[fam] if sig else "white", capsize=0, lw=1, label=FAMLAB[fam] if i == 0 else None)
+    labs = []
+    for m, lab in COUP_MODELS:
+        acc = np.mean([r["accuracy"] for r in rows[m].values()]) if rows[m] else float("nan")
+        labs.append(f"{lab}\nacc {acc:.2f}")
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=7)
+    ax.set_ylabel("β (margin → correct)"); ax.legend(frameon=False, fontsize=7, ncol=5, loc="upper right")
+    _save(fig, out, "fig_coupling")
+
+
 FIGS = {"cpca": fig_cpca, "manifold": fig_manifold, "stated": fig_stated, "e10": fig_e10,
         "crossform": fig_crossform, "bridge": fig_bridge,
-        "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11, "scale": fig_scale}
+        "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11, "scale": fig_scale,
+        "querylocal": fig_querylocal, "months": fig_months, "causal": fig_causal, "coupling": fig_coupling}
 
 
 def main():
