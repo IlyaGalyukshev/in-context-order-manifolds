@@ -1,0 +1,82 @@
+# h3_preset.yml — Gemma-4-31B, decisive causal test on the mlc H100 platform (closed contour,
+# numbers to the log only; writes one small parquet). Runs: (1) E9c entity patch with a
+# coherence-null TWIN donor (scripts/patch_entity.py --twin-stimuli): the donor entity's activation
+# moves the answered position toward its rank only if it comes from a context with a valid order;
+# (2) coupling with the robust model (+hop, stated, stimulus FE) on the H1 acts_mean/battery.
+#
+#   git pull && mlc job submit -p galyukshev --preset-file h3_preset.yml --verbose
+#   J=$(mlc job ls -p galyukshev | awk '/h3-31b/ && /SUCCEEDED/{print $1; exit}')
+#   mlc job logs "$J" | grep -E 'toward|TWIN|robust|RESULT'
+
+job:
+  time_limit: 16h0m0s
+  flavor: h100-2x
+  generate_name: h3-31b
+  image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: "/work/manifolds"
+      readwrite: true
+
+  input:
+    - type: files
+      src: ./
+      dst: "/work/"
+      mask: "run_scripts.sh"
+    - type: files
+      src: ./scripts/
+      dst: "/work/scripts/"
+      mask: "*"
+    - type: files
+      src: ./configs/
+      dst: "/work/configs/"
+      mask: "*"
+    - type: files
+      src: ./data/pools/
+      dst: "/work/data/pools/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/
+      dst: "/work/src/icom/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/battery/
+      dst: "/work/src/icom/battery/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/extraction/
+      dst: "/work/src/icom/extraction/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/generator/
+      dst: "/work/src/icom/generator/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/probes/
+      dst: "/work/src/icom/probes/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/utils/
+      dst: "/work/src/icom/utils/"
+      mask: "*"
+    - type: model_registry
+      mrid: huggingface-proxy/google/gemma-4-31B-it/419b2efe421994fdfd3394e621983d4cc511cd4f
+      dst: /hf_models/
+
+  args:
+    - bash
+    - -lc
+    - >
+      (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
+      pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
+      export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models PYTHONPATH=/work/src &&
+      cd /work && { du -sh /work/manifolds/* 2>/dev/null || true; } &&
+      python3 scripts/generate_bcs.py --out /work/data/sweep/core --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --n-grid 7,9,12,16 --per-cell 40 --difficulty hard --conditions shuffle &&
+      echo "=== H3.1 E9c entity patch, real vs twin donor ===" &&
+      python3 scripts/patch_entity.py --model gemma-4-31b-it --model-path /hf_models --stimuli /work/data/sweep/core/stimuli.jsonl --twin-stimuli /work/data/sweep/core/stimuli_null.jsonl --families s0_zib,s1_size,s1_loud --scheme readout --patch-layers 24,33,42 --n-stim 100 --n-pairs 2 --n-boot 2000 --out /work/manifolds/e9c/patch_31b.parquet ;
+      echo "=== H3.2 coupling, robust model ===" &&
+      OUT_ROOT=/work/manifolds DATA_DIR=/work/data/sweep MODEL_PATH=/hf_models DEVICE_MAP=auto STAGES=coupling bash /work/run_scripts.sh google/gemma-4-31B-it
