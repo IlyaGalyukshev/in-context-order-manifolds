@@ -127,8 +127,14 @@ def main() -> None:
         tag = "" if fr is None else f"_f{int(round(fr * 100))}"
         path = out_dir / f"{st['stimulus_id']}{tag}.npz"
         if path.exists():
-            skipped += 1
-            continue
+            try:                                               # a job killed mid-write leaves a truncated npz
+                with np.load(path, allow_pickle=False) as z:
+                    _ = [z[k].shape for k in z.files]
+                skipped += 1
+                continue
+            except Exception:
+                print(f"[resume] unreadable {path.name} -> recomputing", flush=True)
+                path.unlink()
         prefix = {"none": "", "order": "After reading, you will be asked about the ORDER of these entities.",
                   "mention": "After reading, you will be asked WHICH entities were mentioned."}[args.prefix]
         if args.probe:
