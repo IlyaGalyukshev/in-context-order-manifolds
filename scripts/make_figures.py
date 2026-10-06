@@ -557,7 +557,8 @@ def fig_causal(figdata, out, dump):
             print(f"  31B {r['family']:8s} L{r['layer']} B {r['towardB']} C {r['towardC']} Btwin {r['towardBtwin']} d {r['delta']} {r['ci']}")
         return
     plt = _style()
-    fig, (a, b) = plt.subplots(2, 1, figsize=(3.6, 5.0), gridspec_kw={"hspace": 0.7})
+    fig, a = plt.subplots(figsize=(3.6, 2.6))
+    figb, b = plt.subplots(figsize=(3.6, 2.6))
     if df is not None:
         for fam, ls in (("s0_zib", "-"), ("s1_size", ":")):
             al, off = _dose(df, fam)
@@ -579,6 +580,7 @@ def fig_causal(figdata, out, dump):
     b.set_ylabel("toward donor rank"); b.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.22))
     b.set_title("Gemma-4-31B transplant", fontsize=8, fontweight="normal", pad=18)
     _save(fig, out, "fig_causal")
+    _save(figb, out, "fig_transplant")
 
 
 COUP_MODELS = [("google_gemma-4-31B-it", "Gemma-4-31B"), ("google_gemma-4-12B-it", "Gemma-4-12B"),
