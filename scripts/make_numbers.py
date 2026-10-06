@@ -138,6 +138,12 @@ def main():
         for r in d["pooled"]:
             put(mname("Pooled", r["label"]), f3(r["increment"], r["increment"] < 0))
             put(mname("PooledCI", r["label"]), ci(r["ci"]))
+    O = load(F, "v11/cmp_olmo_ro.json")
+    if O:
+        r = O["pooled"][0]
+        put(mname("Pooled", "Olmo"), f3(r["increment"])); put(mname("PooledCI", "Olmo"), ci(r["ci"]))
+        put(mname("Olmo", "PosFams"), str(sum(1 for x in O["per_model"] if x["increment"] > 0)))
+        put(mname("Olmo", "Fams"), str(len(O["per_model"])))
     sig = lambda rows: sum(1 for r in rows if r["q_bh"] < 0.05 and r["ci"][0] > 0)
     put(mname("Gemma", "SigCells"), str(sig(G["per_model"]))); put(mname("Gemma", "Cells"), str(len(G["per_model"])))
     put(mname("Qwen", "SigCells"), str(sig(Q["per_model"])))
