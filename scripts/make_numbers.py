@@ -144,6 +144,15 @@ def main():
         if neg:
             put(mname("Gseven", "NegGap"), f3(cond(neg[0], "ablate_induction")["gap"], True))
 
+    # ---- phrasing-matched (Eulerian-balanced) twins: roster-token and pooled increments ----
+    for tag, m in (("Gtwelve", "google_gemma-4-12B-it"), ("Qfour", "Qwen_Qwen3-4B")):
+        for sc, nm in (("readout", "Ro"), ("card_mean", "Card")):
+            for suf, nm2 in (("", ""), ("_L0", "Lzero")):
+                d = load(F, f"v11/tb/{m}/cmp_{sc}{suf}.json")
+                if d and d.get("pooled"):
+                    r = d["pooled"][0]
+                    put(mname("Tb", nm, nm2, tag), f3(r["increment"], True)); put(mname("TbCI", nm, nm2, tag), ci(r["ci"]))
+
     # ---- thin axis (contrastive vs plain PCA rank decoding at the roster token) ----
     for f in sorted(glob.glob(os.path.join(F, "cpu_probes_20260824", "cpca_*_readout.json"))):
         r = json.load(open(f))[0]
@@ -191,6 +200,11 @@ def main():
             near, far = band(inf, 2, 3), band(inf, 8, 99)
             if near is not None and far is not None:
                 put(mname("SdeNear", k), f2(near)); put(mname("SdeFar", k), f2(far))
+    for k, v in C["gate"].items():
+        dm = v.get("distance_model")
+        if dm:
+            put(mname("SdeBrank", k), f2(dm["beta_rank"], True)); put(mname("SdeBrankCI", k), ci(dm["beta_rank_ci"], 2))
+            put(mname("SdeBtally", k), f2(dm["beta_tally"], True)); put(mname("SdeN", k), str(dm["n_pairs"]))
     for k, v in C["gate"].items():
         if v.get("pairwise_lp"):
             put(mname("PairLp", k), f2(v["pairwise_lp"]["acc"]))

@@ -49,6 +49,68 @@ def distance_effect(path, Q, stated):
     return {k: {d: {"acc": v[0] / v[1], "n": v[1]} for d, v in sorted(dd.items())} for k, dd in acc.items()}
 
 
+def _graph(st):
+    """rank of each entity, undirected hop distances, and the one-step tally (claimed earlier minus later)."""
+    from collections import deque
+    order = st["latent_order"]; idx = {e: i for i, e in enumerate(order)}; n = len(order)
+    adj = {i: set() for i in range(n)}; tally = [0] * n
+    for c in st.get("cards", []):
+        a, b = idx[c["entity"]], idx[c["entity_b"]]
+        adj[a].add(b); adj[b].add(a)
+        lo, hi = (a, b) if a < b else (b, a)                     # real stimuli: claims match the latent order
+        tally[lo] += 1; tally[hi] -= 1
+    hop = {}
+    for s0 in range(n):
+        d = {s0: 0}; q = deque([s0])
+        while q:
+            u = q.popleft()
+            for v in adj[u]:
+                if v not in d:
+                    d[v] = d[u] + 1; q.append(v)
+        hop[s0] = d
+    return idx, hop, tally
+
+
+def distance_model(path, Q, stims, n_boot=500, seed=0):
+    """Symbolic distance effect with controls: logistic regression of pairwise correctness on rank distance,
+    hop distance and |one-step tally difference|, inferred pairs between interior entities only; cluster
+    bootstrap over stimuli for the rank-distance coefficient (standardized predictors)."""
+    import numpy as np
+    from sklearn.linear_model import LogisticRegression
+    G = {sid: _graph(st) for sid, st in stims.items()}
+    X, y, g = [], [], []
+    for line in open(path):
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        q = Q.get(r.get("qid")); sid = r.get("stimulus_id")
+        if q is None or sid not in G or r.get("score") is None or r["score"] != r["score"]:
+            continue
+        idx, hop, tally = G[sid]; n = len(idx)
+        a, b = idx.get(q["target_entities"][0]), idx.get(q["target_entities"][1])
+        if a is None or b is None or not (2 <= a <= n - 3 and 2 <= b <= n - 3):
+            continue
+        h = hop[a].get(b)
+        if h is None or h < 2:                                   # inferred pairs only
+            continue
+        X.append([abs(a - b), h, abs(tally[a] - tally[b])]); y.append(float(r["score"]) > 0.5); g.append(sid)
+    if len(set(y)) < 2:
+        return None
+    X = np.array(X, float); y = np.array(y); g = np.array(g)
+    Z = (X - X.mean(0)) / X.std(0)
+    fit = lambda Zs, ys: LogisticRegression(C=1e4, max_iter=2000).fit(Zs, ys).coef_[0]
+    beta = fit(Z, y)
+    rng = np.random.default_rng(seed); ug = np.unique(g); bs = []
+    for _ in range(n_boot):
+        pick = rng.choice(ug, len(ug)); m = np.concatenate([np.where(g == u)[0] for u in pick])
+        if len(set(y[m])) == 2:
+            bs.append(fit(Z[m], y[m])[0])
+    lo, hi = (float(np.percentile(bs, 2.5)), float(np.percentile(bs, 97.5))) if bs else (None, None)
+    return {"beta_rank": float(beta[0]), "beta_rank_ci": [lo, hi], "beta_hop": float(beta[1]),
+            "beta_tally": float(beta[2]), "n_pairs": int(len(y)), "n_stim": int(len(ug))}
+
+
 def gate(path):
     acc = {}
     for line in open(path):
@@ -88,15 +150,21 @@ def main():
             q = json.loads(line)
             if q.get("family") == "pairwise" and q.get("target_entities"):
                 Q[q["qid"]] = q
-    stated = {}
+    stated = {}; stims = {}
     if a.stimuli:
         for line in open(a.stimuli):
             st = json.loads(line)
             stated[st["stimulus_id"]] = {frozenset((c["entity"], c["entity_b"])) for c in st.get("cards", [])}
+            stims[st["stimulus_id"]] = st
     for kv in a.battery:
         tag, path = kv.split("=", 1); res["gate"][tag] = gate(path)
         if Q and stated:
             res["gate"][tag]["distance"] = distance_effect(path, Q, stated)
+            dm = distance_model(path, Q, stims)
+            if dm:
+                res["gate"][tag]["distance_model"] = dm
+                print(f"sde   {tag:12s} beta_rank={dm['beta_rank']:+.2f} {dm['beta_rank_ci']} hop={dm['beta_hop']:+.2f} "
+                      f"tally={dm['beta_tally']:+.2f} n={dm['n_pairs']}", flush=True)
         if Q:
             lp = gate_lp(path, Q)
             if lp:

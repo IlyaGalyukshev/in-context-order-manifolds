@@ -81,16 +81,20 @@ def mention_token_ids(prompt, entity, tok, which="all"):
     return sorted(set(sel))
 
 
-def fit_axis(acts_dir, model, family, condition, scheme, layer, pca=64):
-    """Ridge rank-axis at (scheme, layer) in raw D-space (unit) + a decode fn + natural spread."""
+def fit_axis(acts_dir, model, family, condition, scheme, layer, pca=64, perm_seed=None, exclude=None):
+    """Ridge rank-axis at (scheme, layer) in raw D-space (unit) + a decode fn + natural spread.
+    perm_seed: fit on ranks permuted within each stimulus (a supervised control axis of matched form);
+    exclude: stimulus ids left out of the fit (axis held out from the steered stimuli)."""
     Xs, ys = [], []
+    prng = np.random.default_rng(perm_seed) if perm_seed is not None else None
     for f in sorted((Path(acts_dir) / model).glob("*.npz")):
         z = np.load(f, allow_pickle=False); m = json.loads(str(z["meta"]))
         zk = scheme if scheme in z.files else ("mean_" + scheme if ("mean_" + scheme) in z.files else None)
         if m.get("family") == family and m.get("condition") == condition and zk is not None \
-                and not bool(m.get("is_null", False)):
+                and not bool(m.get("is_null", False)) and not (exclude and f.stem in exclude):
             Xs.append(z[zk][:, layer, :].astype(np.float32))   # rdm+mean store: read mean_<scheme>
-            r = z["ranks"]; ys.append((r - r.min()) / (r.max() - r.min()))
+            r = z["ranks"].astype(float); r = (r - r.min()) / (r.max() - r.min())
+            ys.append(prng.permutation(r) if prng is not None else r)
     if not Xs:
         return None
     X = np.concatenate(Xs); y = np.concatenate(ys)
@@ -130,6 +134,10 @@ def main():
                     help="E9(a) position-response: SET the entity's axis coord to mean+α·spread (absolute "
                          "position) instead of adding α·spread → does the answered rank TRACK the imposed "
                          "position? (--alphas are then z-scores, e.g. -1.5,-0.75,0,0.75,1.5)")
+    ap.add_argument("--control-axes", default="",
+                    help="'perm:K' adds K ridge axes fitted on within-stimulus permuted ranks (same norm/scale)")
+    ap.add_argument("--exclude-steered", action="store_true",
+                    help="fit every axis without the stimuli that are steered (held-out axis)")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--model-path", default=None, help="cluster/local weights dir (offline, no roster)")
     ap.add_argument("--role", default="instruct")
@@ -188,15 +196,16 @@ def main():
                 if r and r[3] > best[1]:
                     best = (L, r[3])
             LP = best[0]
-        fp = fit_axis(args.acts, args.model, family, args.condition, args.scheme, LP)
+        pool = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
+                and s.get("structure", "total_order") == "total_order"][: (2 if args.smoke else args.n_stim)]
+        excl = {s["stimulus_id"] for s in pool} if args.exclude_steered else None
+        fp = fit_axis(args.acts, args.model, family, args.condition, args.scheme, LP, exclude=excl)
         if fp is None:
             print(f"{family}: no acts for scheme {args.scheme}"); continue
         _, decode_peak, _, peak_q, _ = fp
         print(f"[{family}/{args.scheme}] peak layer L{LP} (fit rho={peak_q:.2f})", flush=True)
-        pool = [s for s in stims if s.get("family") == family and s.get("condition") == args.condition
-                and s.get("structure", "total_order") == "total_order"][: (2 if args.smoke else args.n_stim)]
         for Ls in steer_layers:
-            fa = fit_axis(args.acts, args.model, family, args.condition, args.scheme, Ls)
+            fa = fit_axis(args.acts, args.model, family, args.condition, args.scheme, Ls, exclude=excl)
             if fa is None:
                 continue
             v_along, _, spread, _, mean_coord = fa
@@ -210,6 +219,12 @@ def main():
                 vr /= (np.linalg.norm(vr) + 1e-9)
                 offdirs.append(vr)
             directions = [("along", v_along)] + [(f"offaxis{_k}", vr) for _k, vr in enumerate(offdirs)]
+            if args.control_axes.startswith("perm:"):
+                for _k in range(int(args.control_axes.split(":")[1])):
+                    fpk = fit_axis(args.acts, args.model, family, args.condition, args.scheme, Ls,
+                                   perm_seed=1000 + _k, exclude=excl)
+                    if fpk is not None:
+                        directions.append((f"permaxis{_k}", fpk[0]))
             handle = layers[Ls - 1].register_forward_hook(hook)   # affect hidden_states[Ls]
             for s in pool:
                 N = len(s["latent_order"]); target = s["latent_order"][N // 2]; true_rank = N // 2 + 1
@@ -273,6 +288,17 @@ def main():
             hi = (1 + sum(abs(o) >= abs(al) for o in offs)) / (1 + len(offs))  # |off| >= |along| rate
             print(f"{fam:8s} {args.scheme:8s} L{sl:<2d} | along_slope={al:+.3f}  "
                   f"offaxis_null={om:+.3f}±{osd:.3f} (n={len(offs)})  p(|off|>=|along|)={hi:.3f}", flush=True)
+        perms = [_slope(gdf[gdf.direction == dd]) for dd in sorted(gdf.direction.unique()) if dd.startswith("permaxis")]
+        perms = [o for o in perms if o == o]
+        if perms:
+            pm, psd = float(np.mean(perms)), float(np.std(perms))
+            pp = (1 + sum(abs(o) >= abs(al) for o in perms)) / (1 + len(perms))
+            print(f"{fam:8s} {args.scheme:8s} L{sl:<2d} | along_slope={al:+.3f}  "
+                  f"permaxis_null={pm:+.3f}±{psd:.3f} (n={len(perms)})  p_perm(|perm|>=|along|)={pp:.3f}", flush=True)
+        for d0 in ("along", "offaxis", "permaxis"):
+            gd = gdf[gdf.dir_base == d0]
+            if len(gd):
+                print(f"{fam:8s} L{sl:<2d} parse_rate[{d0}]={gd['answered'].notna().mean():.3f} (n={len(gd)})", flush=True)
     print(f"wrote -> {args.out}")
 
 
