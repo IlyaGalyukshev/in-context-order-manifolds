@@ -438,7 +438,7 @@ def fig_stated_v11(figdata, out, dump):
     pl = d["pooled"]
     ax.axhspan(pl["ci"][0], pl["ci"][1], color="#2a78d6", alpha=0.10, lw=0)
     ax.axhline(pl["diff"], color="#2a78d6", lw=1.2, label=f"pooled {pl['diff']:+.3f}")
-    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(4), order)
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(4), [f"Gemma-4-{o}" for o in order], fontsize=7)
     ax.set_ylabel("stated − inferred RSA"); ax.legend(frameon=False, fontsize=6.5, ncol=3)
     _save(fig, out, "fig_stated_v11")
 
@@ -449,7 +449,10 @@ def fig_scale(figdata, out, dump):
     G = _one(figdata, "v11", "cmp_ladder_ro.json"); Q = _one(figdata, "v11", "cmp_qwen_ro.json")
     if not G or not Q:
         print("  scale: need v11/cmp_ladder_ro.json and v11/cmp_qwen_ro.json"); return
-    size = {"E2B": 2, "E4B": 4, "12B": 12, "31B": 31, "Q0.6B": 0.6, "Q1.7B": 1.7, "Q4B": 4, "Q8B": 8}
+    size = {"E2B": 2, "E4B": 4, "12B": 12, "31B": 31, "Q0.6B": 0.6, "Q1.7B": 1.7, "Q4B": 4, "Q8B": 8, "Q14B": 14, "Q32B": 32}
+    q32 = _one(figdata, "v11", "mlc_q32b.json")              # Qwen3-32B ladder point (closed contour, from the log)
+    if q32 and not any(r["label"] == "Q32B" for r in Q["pooled"]):
+        Q["pooled"].append(q32["pooled"])
     if dump:
         for d in (G, Q):
             for r in d["pooled"]:
@@ -462,7 +465,7 @@ def fig_scale(figdata, out, dump):
         lo = [r["increment"] - r["ci"][0] for r in d["pooled"]]; hi = [r["ci"][1] - r["increment"] for r in d["pooled"]]
         ax.errorbar(xs, ys, yerr=[lo, hi], fmt="o-", color=col, capsize=2.5, lw=1.4, ms=4, label=name)
     ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xscale("log")
-    ax.set_xticks([0.6, 1.7, 4, 8, 12, 31], ["0.6", "1.7", "4", "8", "12", "31"])
+    ax.set_xticks([0.6, 1.7, 4, 8, 14, 31], ["0.6", "1.7", "4", "8", "14", "31"])
     ax.set_xlabel("parameters (B; Gemma-4 E-models: effective)"); ax.set_ylabel("real − twin RSA (pooled)")
     ax.legend(frameon=False, fontsize=7)
     _save(fig, out, "fig_scale")
@@ -561,16 +564,11 @@ def fig_causal(figdata, out, dump):
     fig, a = plt.subplots(figsize=(3.6, 2.5))
     figb, b = plt.subplots(figsize=(3.6, 2.6))
     # (a) along-axis slope vs the two control distributions (held-out axis, same layer as the confirmatory test)
-    C = _one(figdata, "v11", "collected.json") or {}
     rows = []                                                  # (label, fam, along, off_m, off_sd, perm_m, perm_sd)
     for fam in ("s0_zib", "s1_size"):
         r = ((mlc or {}).get("steer_ctrl") or {}).get(fam)
         if r:
-            rows.append((f"G4-31B {FAMLAB[fam]}", fam, r["along_slope"], r["offaxis_mean"], r["offaxis_sd"], r["perm_mean"], r["perm_sd"]))
-    for fam in ("s0_zib", "s1_size"):
-        r = C.get("steer", {}).get("12B_ctrl", {}).get(fam)
-        if r and "p_perm" in r:
-            rows.append((f"G4-12B {FAMLAB[fam]}", fam, r["along_slope"], r["null_mean"], r["null_sd"], r["perm_mean"], r["perm_sd"]))
+            rows.append((f"Gemma-4-31B, {FAMLAB[fam]}", fam, r["along_slope"], r["offaxis_mean"], r["offaxis_sd"], r["perm_mean"], r["perm_sd"]))
     for k, (lab, fam, al, om, osd, pm, psd) in enumerate(rows):
         y = len(rows) - 1 - k
         a.plot([pm - 2 * psd, pm + 2 * psd], [y + 0.12] * 2, color="#b9c0c8", lw=5, solid_capstyle="butt",
@@ -591,7 +589,6 @@ def fig_causal(figdata, out, dump):
                   label=name if li == 0 else None)
     b.set_xticks(x, [f"{FAMLAB[f]}\nL24 | L33" for f in fams], fontsize=7); b.set_ylim(0, 1)
     b.set_ylabel("toward donor rank"); b.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.22))
-    b.set_title("Gemma-4-31B transplant", fontsize=8, fontweight="normal", pad=18)
     _save(fig, out, "fig_causal")
     _save(figb, out, "fig_transplant")
 
@@ -628,17 +625,135 @@ def fig_coupling(figdata, out, dump):
     labs = []
     for m, lab in COUP_MODELS:
         acc = np.mean([r["accuracy"] for r in rows[m].values()]) if rows[m] else float("nan")
-        labs.append(f"{lab.replace('Gemma-4-', 'G').replace('Qwen3-', 'Q-').replace('OLMo-3-', 'OLMo-')}\n{acc:.2f}")
-    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=5.6)
+        labs.append(f"{lab}\n{acc:.2f}")
+    ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_xticks(range(len(COUP_MODELS)), labs, fontsize=5.6, rotation=60, ha="right", rotation_mode="anchor")
     ax.set_ylabel("β (margin → correct)"); ax.legend(frameon=False, fontsize=6.5, ncol=3, loc="upper right")
     ax.set_xlabel("model (mean pairwise accuracy)", fontsize=7)
     _save(fig, out, "fig_coupling")
 
 
+def _stim_pair(figdata, family="s1_size", n=7):
+    """First generated stimulus of (family, N) and its coherence-null twin (same entity set)."""
+    d = os.path.join(figdata, "v11", "stimuli")
+    real = next((json.loads(l) for l in open(os.path.join(d, "stimuli.jsonl"))
+                 if json.loads(l)["family"] == family and json.loads(l)["n_items"] == n), None)
+    if real is None:
+        return None, None
+    names = set(real["latent_order"])
+    twin = next((json.loads(l) for l in open(os.path.join(d, "stimuli_null.jsonl"))
+                 if json.loads(l)["family"] == family and set(json.loads(l)["latent_order"]) == names), None)
+    return real, twin
+
+
+def _claims(stim):
+    """(smaller, larger) per card, as the card states it (size family)."""
+    out = []
+    for c in stim["cards"]:
+        a, b = c["entity"], c["entity_b"]
+        out.append((b, a) if " larger than " in c["text"] else (a, b))
+    return out
+
+
+def fig_stimulus(figdata, out, dump):
+    """What a BCS stimulus looks like: (a) text with the two read-out sites, (b) the card graph on the latent
+    order (degree-regular, Hamiltonian path + non-adjacent cards; interior entities scored), (c) the coherence-null
+    twin: same undirected graph, one non-adjacent claim reversed -> a cycle, no valid order."""
+    from matplotlib.patches import FancyArrowPatch
+    real, twin = _stim_pair(figdata)
+    if not real or not twin:
+        print("  stimulus: need v11/stimuli/{stimuli,stimuli_null}.jsonl"); return
+    rank = real["entity_ranks"]; n = real["n_items"]
+    rev = [(lo, hi) for lo, hi in _claims(twin) if rank[lo] > rank[hi]]     # claims against the latent order
+    target = next(e for e in real["latent_order"] if rank[e] == (n + 1) // 2)  # a middle (interior) entity
+    if dump:
+        print(f"  real {real['stimulus_id']} twin {twin['stimulus_id']} N={n} cards={len(real['cards'])} "
+              f"reversed={rev} target={target}")
+        return
+    plt = _style()
+    fig = plt.figure(figsize=(7.2, 2.55))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.3, 1, 1], wspace=0.12)
+    # (a) text, with the roster token and the card the pooled read-out averages over
+    a = fig.add_subplot(gs[0]); a.axis("off"); a.set_xlim(0, 1); a.set_ylim(-0.18, 1)
+    a.set_title("(a) Stimulus text", fontsize=8, loc="left", fontweight="normal")
+    cards = real["prompt"].split("\n\n")[0].split("\n")
+    first = next(i for i, c in enumerate(cards) if c.startswith(f"The {target} "))
+    show = list(range(5)) + ([first] if first >= 5 else [])
+    roster = real["prompt"].split("\n\n")[1]
+    fig.canvas.draw(); r = fig.canvas.get_renderer()
+
+    def line(y, parts):
+        x = 0.0
+        for txt, hl in parts:
+            t = a.text(x, y, txt, fontsize=6.3, family="DejaVu Sans Mono", va="center",
+                       bbox=dict(boxstyle="square,pad=0.12", fc=hl, ec="none") if hl else None)
+            bb = t.get_window_extent(renderer=r).transformed(a.transData.inverted())
+            x = bb.x1 if not hl else bb.x1 - 0.004
+    y = 0.93
+    for k, i in enumerate(show):
+        if k == 5:
+            a.text(0.0, y, "...", fontsize=6.3, family="DejaVu Sans Mono", va="center"); y -= 0.08
+        c = cards[i]
+        line(y, [(c, "#f6d7a7")] if i == first else [(c, None)]); y -= 0.08
+    a.text(0.0, y, f"...   ({len(cards)} cards, shuffled)", fontsize=6.3, family="DejaVu Sans Mono", va="center",
+           color="#6b7480"); y -= 0.12
+    pre, post = roster.split(f"the {target}", 1)
+    words = (pre + f"the {target}" + post).split(" ")
+    rows, cur = [], ""
+    for w in words:
+        if len(cur) + len(w) + 1 > 42:
+            rows.append(cur); cur = w
+        else:
+            cur = (cur + " " + w).strip()
+    rows.append(cur)
+    for row in rows:
+        if target in row:
+            b0, b1 = row.split(target, 1)
+            line(y, [(b0, None), (target, "#9cc0ec"), (b1, None)])
+        else:
+            line(y, [(row, None)])
+        y -= 0.08
+    a.text(0.0, -0.08, "■", color="#9cc0ec", fontsize=7, va="center")
+    a.text(0.04, -0.08, "roster token (entity read-out)", fontsize=6, va="center")
+    a.text(0.0, -0.15, "■", color="#f6d7a7", fontsize=7, va="center")
+    a.text(0.04, -0.15, "card tokens (pooled read-out)", fontsize=6, va="center")
+
+    def graph(ax, claims, title, bad=()):
+        ax.set_title(title, fontsize=8, loc="left", fontweight="normal")
+        cyc = set()
+        if bad:
+            lo, hi = bad[0]                                     # cycle: hi < lo by the reversed claim, lo < ... < hi on the path
+            cyc = {(e1, e2) for e1 in rank for e2 in rank if rank[e2] == rank[e1] + 1 and rank[lo] >= rank[e1] >= rank[hi]}
+            cyc = {(e1, e2) for e1 in rank for e2 in rank if rank[e2] == rank[e1] + 1 and rank[hi] <= rank[e1] < rank[lo]}
+        for sm, lg in claims:
+            x1, x2 = rank[sm], rank[lg]
+            reversed_ = (sm, lg) in bad
+            oncyc = (sm, lg) in cyc
+            col = "#d1495b" if (reversed_ or oncyc) else ("#2a2a2a" if abs(x1 - x2) == 1 else "#9aa2ab")
+            rad = -0.55 if x2 > x1 else 0.55
+            ax.add_patch(FancyArrowPatch((x1, 0), (x2, 0), connectionstyle=f"arc3,rad={rad}", arrowstyle="-|>",
+                                         mutation_scale=6, lw=1.6 if reversed_ else 0.9, color=col,
+                                         shrinkA=4, shrinkB=4, ls="--" if reversed_ else "-", zorder=2))
+        for e, k in rank.items():
+            inner = 3 <= k <= n - 2
+            ax.scatter(k, 0, s=34, zorder=3, color="#2a78d6" if inner else "white", edgecolor="#2a78d6" if inner else "#6b7480", lw=1)
+            ax.text(k, -0.42, e, rotation=40, ha="right", va="top", fontsize=6)
+        ax.set_xlim(0.4, n + 0.6); ax.set_ylim(-2.2, 2.6); ax.axis("off")
+    b = fig.add_subplot(gs[1]); c = fig.add_subplot(gs[2])
+    graph(b, _claims(real), "(b) Real: latent order")
+    graph(c, _claims(twin), "(c) Coherence-null twin", bad=rev)
+    b.text(0.6, 2.35, "adjacent rank", fontsize=6, color="#2a2a2a"); b.text(0.6, 2.0, "non-adjacent", fontsize=6, color="#9aa2ab")
+    b.text(n + 0.5, 2.35, "● interior (scored)", fontsize=6, color="#2a78d6", ha="right")
+    c.text(n + 0.5, 2.35, "reversed claim → cycle", fontsize=6, color="#d1495b", ha="right")
+    b.text((n + 1) / 2, -2.15, "latent rank →", fontsize=6, ha="center", color="#6b7480")
+    c.text((n + 1) / 2, -2.15, "same entities and undirected graph", fontsize=6, ha="center", color="#6b7480")
+    _save(fig, out, "fig_stimulus")
+
+
+
 FIGS = {"cpca": fig_cpca, "manifold": fig_manifold, "stated": fig_stated, "e10": fig_e10,
         "crossform": fig_crossform, "bridge": fig_bridge,
         "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11, "scale": fig_scale,
-        "querylocal": fig_querylocal, "months": fig_months, "causal": fig_causal, "coupling": fig_coupling}
+        "stimulus": fig_stimulus, "querylocal": fig_querylocal, "months": fig_months, "causal": fig_causal, "coupling": fig_coupling}
 
 
 def main():

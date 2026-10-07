@@ -74,6 +74,8 @@ def mention_token_ids(prompt, entity, tok, which="all"):
         return []
     if which == "last":
         sel = spans[-1]
+    elif which == "roster_before_q":                                  # roster mention when a question follows
+        sel = spans[-2] if len(spans) > 1 else []
     elif which == "cards":
         sel = [i for sp in (spans[:-1] if len(spans) > 1 else spans) for i in sp]  # drop roster mention
     else:
@@ -136,6 +138,9 @@ def main():
                          "position? (--alphas are then z-scores, e.g. -1.5,-0.75,0,0.75,1.5)")
     ap.add_argument("--control-axes", default="",
                     help="'perm:K' adds K ridge axes fitted on within-stimulus permuted ranks (same norm/scale)")
+    ap.add_argument("--inject-at", default="question", choices=["question", "roster", "both"],
+                    help="where the vector is added while the answer is generated: the entity's mention in the "
+                         "question (default), only its roster token, or both")
     ap.add_argument("--exclude-steered", action="store_true",
                     help="fit every axis without the stimuli that are steered (held-out axis)")
     ap.add_argument("--smoke", action="store_true")
@@ -232,7 +237,10 @@ def main():
                 block = chat(s["prompt"], gen=False); pos = mention_token_ids(block, target, tok, which)
                 q = (f"{s['prompt']}\n\nCounting from the earliest as position 1, what position is "
                      f"the {target}? Reply with only the number. No explanation.")
-                qtext = chat(q, gen=True); qpos = mention_token_ids(qtext, target, tok, which)
+                qtext = chat(q, gen=True)
+                qq = mention_token_ids(qtext, target, tok, which)
+                qr = mention_token_ids(qtext, target, tok, "roster_before_q")
+                qpos = {"question": qq, "roster": qr, "both": sorted(set(qq) | set(qr))}[args.inject_at]
                 if not pos or not qpos:
                     continue
                 for direction, vec in directions:

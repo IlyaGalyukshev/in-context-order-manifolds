@@ -6,6 +6,7 @@ Schemes:
   marker     — tokens of the card's order marker ("Tag 53"); dated/tagged only
   last_token — last token of the entity's primary card
   card_mean  — mean over all tokens of the primary card
+  cards_mean — mean over all tokens of every card that mentions the entity (sentence pooling)
 Primary card = the card where the entity plays the `entity` role (earlier in
 relational pairs); rank-N relational entities only appear as entity_b, so
 their primary card is the one where they are entity_b.
@@ -21,7 +22,7 @@ import re
 
 import numpy as np
 
-POOLING_SCHEMES = ("name", "readout", "marker", "last_token", "card_mean")
+POOLING_SCHEMES = ("name", "readout", "marker", "last_token", "card_mean", "cards_mean")
 
 
 def _tokens_in_span(offsets: list[tuple[int, int]], lo: int, hi: int) -> list[int]:
@@ -53,12 +54,15 @@ def build_spans(prompt: str, stimulus: dict, offsets: list[tuple[int, int]]) -> 
             name_toks += toks
             last_mention = toks  # overwritten -> ends as the LAST mention
         card_toks = _tokens_in_span(offsets, lo, hi)
+        all_cards = sorted({t for c in cards if e in (c["entity"], c.get("entity_b"))
+                            for t in _tokens_in_span(offsets, *card_pos[c["text"]])})
 
         d: dict[str, list[int]] = {
             "name": sorted(set(name_toks)),        # pooled over all mentions (mention-confounded)
             "readout": last_mention,               # roster token: post-all-cards read locus
             "last_token": [card_toks[-1]],
             "card_mean": card_toks,
+            "cards_mean": all_cards,
         }
         if e in markers:
             mk = markers[e]

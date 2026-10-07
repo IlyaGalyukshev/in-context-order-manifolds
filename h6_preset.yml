@@ -1,0 +1,94 @@
+# h6_preset.yml — Gemma-4-31B on the mlc H100 platform (closed contour, numbers to the log only).
+# Answers the review points that need the 31B model:
+#   (1) read-out sites on N=12: roster token, the primary card (card_mean), all cards that mention the entity
+#       (cards_mean) and the entity name over all mentions (name), each with the layer-0 control;
+#   (2) real - twin on pair subsets: never-stated pairs (multihop), pairs inside the twin's cycle (oncycle)
+#       and pairs with at least one entity off it (offcycle);
+#   (3) no-integration baseline at the model's own real RSA (graph_baseline --match-real auto) + absolute RSA;
+#   (4) steering at layer 33 with 60 permuted-rank axes, axis fitted on the non-steered stimuli, injecting at the
+#       question mention (as before) and only at the roster token.
+#
+#   git pull && mlc job submit -p galyukshev --preset-file h6_preset.yml --verbose
+#   J=$(mlc job ls -p galyukshev | awk '/h6-31b/{print $1; exit}')
+#   mlc job logs "$J" | grep -E '===|INC|POOL|incr=|L0|model |noise-matched|baseline|along_slope|parse_rate|Error|Traceback'
+job:
+  time_limit: 24h0m0s
+  flavor: h100-2x
+  generate_name: h6-31b
+  image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: "/work/manifolds"
+      readwrite: true
+
+  input:
+    - type: files
+      src: ./
+      dst: "/work/"
+      mask: "run_scripts.sh"
+    - type: files
+      src: ./scripts/
+      dst: "/work/scripts/"
+      mask: "*"
+    - type: files
+      src: ./configs/
+      dst: "/work/configs/"
+      mask: "*"
+    - type: files
+      src: ./data/pools/
+      dst: "/work/data/pools/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/
+      dst: "/work/src/icom/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/battery/
+      dst: "/work/src/icom/battery/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/extraction/
+      dst: "/work/src/icom/extraction/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/generator/
+      dst: "/work/src/icom/generator/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/probes/
+      dst: "/work/src/icom/probes/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/utils/
+      dst: "/work/src/icom/utils/"
+      mask: "*"
+    - type: model_registry
+      mrid: huggingface-proxy/google/gemma-4-31B-it/419b2efe421994fdfd3394e621983d4cc511cd4f
+      dst: /hf_models/
+
+  args:
+    - bash
+    - -lc
+    - >
+      (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
+      pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
+      export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models PYTHONPATH=/work/src &&
+      cd /work && { du -sh /work/manifolds/* 2>/dev/null || true; } &&
+      python3 scripts/generate_bcs.py --out /work/data/sweep/core --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --n-grid 7,9,12,16 --per-cell 40 --difficulty hard --conditions shuffle &&
+      python3 scripts/generate_bcs.py --out /work/data/n12 --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --n-grid 12 --per-cell 40 --difficulty hard --conditions shuffle &&
+      echo "=== H6.1 extraction N=12, four read-out sites ===" &&
+      for S in stimuli stimuli_null; do python3 scripts/extract_repeat.py --model google_gemma-4-31B-it --model-path /hf_models --role instruct --device-map auto --k 6 --loci readout,card_mean,cards_mean,name --store rdm --stimuli /work/data/n12/$S.jsonl --out /work/manifolds/h6/acts; done ;
+      echo "=== H6.2 per-scheme real - twin and layer-0 control ===" ;
+      for SC in readout card_mean cards_mean name; do python3 scripts/per_stim_rsa.py --acts /work/manifolds/h6/acts --model google_gemma-4-31B-it --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme $SC --n-items 12 --pair-subsets multihop,oncycle,offcycle --stimuli /work/data/n12/stimuli.jsonl --stimuli-null /work/data/n12/stimuli_null.jsonl --out /work/manifolds/h6/dumps ; python3 scripts/compare_models.py --dumps /work/manifolds/h6/dumps --models google_gemma-4-31B-it --labels G31B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme $SC ; python3 scripts/compare_models.py --dumps /work/manifolds/h6/dumps --models google_gemma-4-31B-it --labels G31B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme $SC --layer0 ; done ;
+      echo "=== H6.3 pair subsets (readout) ===" ;
+      for SUB in multihop oncycle offcycle; do python3 scripts/compare_models.py --dumps /work/manifolds/h6/dumps --models google_gemma-4-31B-it --labels G31B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme readout --subset $SUB ; done ;
+      echo "=== H6.4 no-integration baseline at the model level, absolute RSA ===" ;
+      python3 scripts/graph_baseline.py --stimuli /work/data/n12/stimuli.jsonl --stimuli-null /work/data/n12/stimuli_null.jsonl --hops 1,3,inf --dumps /work/manifolds/h6/dumps --models google_gemma-4-31B-it --match-real auto --json /work/manifolds/h6/graph_baseline.json ;
+      echo "=== H6.5 steering, question mention, 60 permuted-rank axes ===" ;
+      python3 scripts/steer_rank.py --model google_gemma-4-31B-it --model-path /hf_models --role instruct --acts /work/manifolds/google_gemma-4-31B-it/acts_mean --stimuli /work/data/sweep/core/stimuli.jsonl --families s0_zib,s1_size --scheme readout --n-stim 32 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 19 --control-axes perm:60 --exclude-steered --steer-layers 33 --inject-at question --out /work/manifolds/h6/steer_q.parquet ;
+      echo "=== H6.6 steering, roster token only, 60 permuted-rank axes ===" ;
+      python3 scripts/steer_rank.py --model google_gemma-4-31B-it --model-path /hf_models --role instruct --acts /work/manifolds/google_gemma-4-31B-it/acts_mean --stimuli /work/data/sweep/core/stimuli.jsonl --families s0_zib,s1_size --scheme readout --n-stim 32 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 19 --control-axes perm:60 --exclude-steered --steer-layers 33 --inject-at roster --out /work/manifolds/h6/steer_r.parquet

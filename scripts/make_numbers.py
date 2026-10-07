@@ -113,10 +113,12 @@ def main():
                     above += 1
         put(mname("Gb", "GemmaAbove"), str(above))
     # noise-matched tallies: each Gemma model compared with tallies whose real RSA matches its own
-    nm = (load(F, "v11/graph_baseline_noise.json") or {}).get("noise_matched", [])
+    nm = (load(F, "v11/graph_baseline_noise.json") or {}).get("noise_matched", []) \
+        + (load(F, "v11/graph_baseline_noise_qwen.json") or {}).get("noise_matched", [])
     if nm and gb[0]:
-        tgt = {"EtwoB": "google_gemma-4-E2B-it", "EfourB": "google_gemma-4-E4B-it", "Gtwelve": "google_gemma-4-12B-it"}
-        mods = {m["model"]: m for m in gb[0]["models"]}
+        tgt = {"EtwoB": "google_gemma-4-E2B-it", "EfourB": "google_gemma-4-E4B-it", "Gtwelve": "google_gemma-4-12B-it",
+               "Qfour": "Qwen_Qwen3-4B", "Qeight": "Qwen_Qwen3-8B"}
+        mods = {m["model"]: m for g in gb if g for m in g["models"]}
         above_nm = 0
         for tag, m in tgt.items():
             row = mods.get(m)
@@ -125,6 +127,8 @@ def main():
             near = [r for r in nm if abs(r["target"] - row["real"]) < 0.006]
             if not near:
                 continue
+            best = min({r["target"] for r in near}, key=lambda t: abs(t - row["real"]))   # nearest matched level
+            near = [r for r in near if r["target"] == best]
             h1 = next(r for r in near if r["hop"] == "1"); h3 = next(r for r in near if r["hop"] == "3")
             hinf = next(r for r in near if r["hop"] == "inf")
             put(mname("NmOne", tag), f2(h1["rel_drop"])); put(mname("NmThree", tag), f2(h3["rel_drop"])); put(mname("NmInf", tag), f2(hinf["rel_drop"]))
@@ -162,6 +166,12 @@ def main():
 
     # ---- ladders (Gemma-4, Qwen3), layer-0 control ----
     G = load(F, "v11/cmp_ladder_ro.json"); G0 = load(F, "v11/cmp_ladder_ro_L0.json"); Q = load(F, "v11/cmp_qwen_ro.json")
+    q32 = load(F, "v11/mlc_q32b.json")                       # Qwen3-32B ladder point (closed contour, from the log)
+    if q32:
+        put(mname("Pooled", "Q32B"), f3(q32["pooled"]["increment"])); put(mname("PooledCI", "Q32B"), ci(q32["pooled"]["ci"]))
+        put(mname("Pair", "Q32B"), f"{q32['gate']['pairwise']:.2f}"); put(mname("Recon", "Q32B"), f"{q32['gate']['reconstruction']:.2f}")
+        put(mname("PairLp", "Q32B"), f"{q32['gate']['pairwise_lp']:.2f}")
+        put(mname("Coup", "Q32B", "Plain"), str(q32["coupling_plain_sig"]))
     for d in (G, Q):
         for r in d["pooled"]:
             put(mname("Pooled", r["label"]), f3(r["increment"], r["increment"] < 0))
@@ -307,6 +317,17 @@ def main():
                 f = fam.split("_")[1]
                 put(mname("SteerPerm", t, f), f3(r["perm_mean"], True)); put(mname("SteerPermSd", t, f), f3(r["perm_sd"]))
                 put(mname("SteerPP", t, f), f"{r['p_perm']:.2f}"); put(mname("SteerNPerm", t), str(r["n_perm"]))
+
+    # ---- transplant replication (cross-stimulus donors, DGX models) ----
+    TP = C.get("transplant", {})
+    cells = [r["cross"] for v in TP.values() for L in v.values() for r in L.values() if "cross" in r and r["cross"]["n"] >= 20]
+    if cells:
+        put(mname("TpXSmall", "Cells"), str(len(cells))); put(mname("TpXSmall", "Sig"), str(sum(1 for r in cells if r["sig"])))
+        put(mname("TpXSmall", "Models"), str(len(TP)))
+    g = TP.get("G12B", {}).get("s0_zib", {}).get("19")
+    if g:
+        put(mname("TpGtwelve", "SameD"), f2(g["same"]["delta"], True)); put(mname("TpGtwelve", "SameCI"), ci(g["same"]["ci"], 2))
+        put(mname("TpGtwelve", "CrossD"), f2(g["cross"]["delta"], True)); put(mname("TpGtwelve", "CrossCI"), ci(g["cross"]["ci"], 2))
 
     # ---- coupling (robust model) ----
     cm = {"Gthirtyone": mlc.get("coupling", [])}

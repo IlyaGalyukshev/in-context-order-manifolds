@@ -127,6 +127,25 @@ def gate(path):
     return {q: {"acc": v[0] / v[1], "n": v[1]} for q, v in sorted(acc.items()) if v[1]}
 
 
+DELTA_RE = re.compile(r"Δ(?:\(Bx−Cx\))?=([+-][\d.]+) \[([+-][\d.]+),([+-][\d.]+)\] (SIG|ns)")
+
+
+def transplant(path):
+    """patch_entity.py summary lines -> {family: {layer: {same|cross: {toward_b, toward_c, delta, ci, sig, n}}}}."""
+    out = {}
+    for line in open(path, errors="replace"):
+        line = line.strip()
+        m = re.match(r"^(\S+)\s+\S+\s+L(\d+)\s+\|\s+(CROSS )?toward(B|Bx)=([\d.]+)\s+toward(?:C|Cx)=([\d.]+)", line)
+        d = DELTA_RE.search(line); n = re.search(r"\(n=(\d+)\)", line)
+        if not (m and d and n):
+            continue
+        fam, L, cross, _, tb, tc = m.groups()
+        out.setdefault(fam, {}).setdefault(L, {})["cross" if cross else "same"] = {
+            "toward_b": float(tb), "toward_c": float(tc), "delta": float(d.group(1)),
+            "ci": [float(d.group(2)), float(d.group(3))], "sig": d.group(4) == "SIG", "n": int(n.group(1))}
+    return out
+
+
 def steer(path):
     out = {}
     for line in open(path, errors="replace"):
@@ -146,6 +165,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--battery", nargs="*", default=[])
     ap.add_argument("--steer", nargs="*", default=[])
+    ap.add_argument("--transplant", nargs="*", default=[], help="TAG=patch_entity.log (summary lines)")
     ap.add_argument("--questions", default=None)
     ap.add_argument("--stimuli", default=None)
     ap.add_argument("--out", required=True)
@@ -181,6 +201,8 @@ def main():
                 res["gate"][tag]["pairwise_lp"] = lp
     for kv in a.steer:
         tag, path = kv.split("=", 1); res["steer"][tag] = steer(path)
+    for kv in a.transplant:
+        tag, path = kv.split("=", 1); res.setdefault("transplant", {})[tag] = transplant(path)
     json.dump(res, open(a.out, "w"), indent=1)
     for tag, g in res["gate"].items():
         print(f"gate  {tag:12s} pairwise={g.get('pairwise', {}).get('acc', float('nan')):.3f} "

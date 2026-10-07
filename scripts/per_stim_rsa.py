@@ -34,6 +34,55 @@ def half(key) -> int:
     return int(hashlib.md5(str(key).encode()).hexdigest(), 16) % 2
 
 
+def _template(card):
+    return card["text"].replace(card["entity_b"], "<B>").replace(card["entity"], "<A>")
+
+
+def card_graphs(stimuli_path, null_path=None):
+    """content_key -> (edges as rank-index pairs, set of on-cycle ranks or None). For twins the reversed claim is
+    the card whose phrasing template (learned from real stimuli, where every claim follows the latent order) points
+    against the latent order; the cycle it closes runs along the Hamiltonian path between the two ranks."""
+    reals = [json.loads(l) for l in open(stimuli_path)]
+    sign = {}                                                   # template -> True if <A> precedes <B>
+    for st in reals:
+        er = st.get("entity_ranks") or {}
+        for c in st.get("cards", []):
+            if c.get("entity") in er and c.get("entity_b") in er:
+                sign[_template(c)] = er[c["entity"]] < er[c["entity_b"]]
+    out, cyc_by_set = {}, {}
+    for st in ([json.loads(l) for l in open(null_path)] if null_path else []):
+        er = st.get("entity_ranks") or {}
+        rev = [c for c in st.get("cards", []) if c.get("entity") in er and _template(c) in sign
+               and sign[_template(c)] != (er[c["entity"]] < er[c["entity_b"]])]
+        cyc = None
+        if len(rev) == 1:
+            lo, hi = sorted((er[rev[0]["entity"]], er[rev[0]["entity_b"]]))
+            cyc = set(range(lo, hi + 1))
+        out[st.get("content_key")] = ([(er[c["entity"]] - 1, er[c["entity_b"]] - 1) for c in st.get("cards", [])
+                                       if c.get("entity") in er and c.get("entity_b") in er], cyc)
+        cyc_by_set[frozenset(er)] = cyc
+    for st in reals:
+        er = st.get("entity_ranks")
+        if er:
+            out[st.get("content_key")] = ([(er[c["entity"]] - 1, er[c["entity_b"]] - 1) for c in st.get("cards", [])
+                                           if c.get("entity") in er and c.get("entity_b") in er],
+                                          cyc_by_set.get(frozenset(er)))
+    return out
+
+
+def subset_mask(ranks, N, sub, edges, cyc):
+    """pair subsets over interior entities: onehop/multihop (stated graph); oncycle = both entities on the twin's
+    cycle (their order is undefined in the twin), offcycle = at least one entity off it (their order is still
+    implied in the twin). The same pairs are used for the real stimulus and its twin."""
+    if sub in ("onehop", "multihop"):
+        return pc._pair_mask(ranks, N, sub, edges=edges)
+    if cyc is None:
+        return None
+    on = np.array([r in cyc for r in ranks])
+    both = on[:, None] & on[None, :]
+    return both if sub == "oncycle" else ~both
+
+
 def keyed(recs):
     """content_key, de-duplicated deterministically (files are read in sorted order for every model)."""
     seen, out = {}, []
@@ -77,6 +126,8 @@ def main() -> None:
                     help="e.g. onehop,multihop: also score each real stimulus on a PAIR SUBSET of the stated-relation "
                          "graph (needs --stimuli) at the same cross-fitted layer, and test subsets within stimuli")
     ap.add_argument("--stimuli", default=None, help="stimuli.jsonl (real) for --pair-subsets edge graphs")
+    ap.add_argument("--stimuli-null", default=None,
+                    help="stimuli_null.jsonl: also score twins on the same pair subsets, and enable oncycle/offcycle")
     ap.add_argument("--n-boot", type=int, default=5000)
     ap.add_argument("--entity-order", default=None,
                     help="comma list of entity names in an EXTERNAL order (e.g. calendar months): also score each "
@@ -85,13 +136,7 @@ def main() -> None:
     args = ap.parse_args()
 
     Path(args.out).mkdir(parents=True, exist_ok=True)
-    edges = {}
-    if args.pair_subsets and args.stimuli:
-        for line in open(args.stimuli):
-            st = json.loads(line); er = st.get("entity_ranks")
-            if er:
-                edges[st.get("content_key")] = [(er[c["entity"]] - 1, er[c["entity_b"]] - 1) for c in st.get("cards", [])
-                                                if c.get("entity") in er and c.get("entity_b") in er]
+    graphs = card_graphs(args.stimuli, args.stimuli_null) if (args.pair_subsets and args.stimuli) else {}
     for fam in args.families.split(","):
         kw = dict(n_items=args.n_items, difficulty=args.difficulty)
         real = pc.load_repeat(args.acts, args.model, fam, args.condition, args.scheme, is_null=False, **kw)
@@ -119,23 +164,29 @@ def main() -> None:
             ext = dict(real_ext={k: ext_rsa(r, layers[1 - hr[i]], order) for i, (k, r) in enumerate(zip(kr, real))},
                        twin_ext={k: ext_rsa(t, layers[1 - ht[j]], order) for j, (k, t) in enumerate(zip(kt, twin))},
                        real_ext_l0={k: ext_rsa(r, 0, order) for k, r in zip(kr, real)})
-        subsets = {}
-        if args.pair_subsets and edges:
-            for sub in args.pair_subsets.split(","):
+        subsets, twin_subsets = {}, {}
+        if args.pair_subsets and graphs:
+            def score(recs, keys, hs):
                 vals = {}
-                for i, (k, r) in enumerate(zip(kr, real)):
-                    e = edges.get(r.get("content_key"))
-                    ir = pc._interior_rdm(r, layers[1 - hr[i]], args.n_splits, args.seed)
-                    if e is None or ir is None:
+                for i, (k, r) in enumerate(zip(keys, recs)):
+                    g = graphs.get(r.get("content_key"))
+                    ir = pc._interior_rdm(r, layers[1 - hs[i]], args.n_splits, args.seed)
+                    if g is None or ir is None:
                         continue
                     rdm, ranks, N = ir
-                    mask = pc._pair_mask(ranks, N, sub, edges=e)
+                    mask = subset_mask(ranks, N, sub, g[0], g[1])
+                    if mask is None or mask.sum() < 2 * 2:
+                        continue
                     vals[k] = float(pc.whitened_rsa(rdm, pc.line_rdm(ranks), mask=mask))
-                subsets[sub] = vals
+                return vals
+            for sub in args.pair_subsets.split(","):
+                subsets[sub] = score(real, kr, hr)
+                if args.stimuli_null and twin:
+                    twin_subsets[sub] = score(twin, kt, ht)
         rec = dict(model=args.model, family=fam, scheme=args.scheme, condition=args.condition,
                    n_items=args.n_items, difficulty=args.difficulty, L=int(L),
                    layers={str(h): l for h, l in layers.items()}, real=real_v, twin=twin_v,
-                   real_l0=real_l0, twin_l0=twin_l0, real_subsets=subsets, **ext)
+                   real_l0=real_l0, twin_l0=twin_l0, real_subsets=subsets, twin_subsets=twin_subsets, **ext)
         fn = Path(args.out) / f"{args.model}__{fam}__{args.scheme}__N{args.n_items}.json"
         json.dump(rec, open(fn, "w"))
         rv = np.array([v for v in real_v.values() if v == v]); tv = np.array([v for v in twin_v.values() if v == v])

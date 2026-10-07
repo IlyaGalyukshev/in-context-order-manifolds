@@ -52,6 +52,9 @@ def main() -> None:
     ap.add_argument("--subsets", default=None,
                     help="A,B: paired within-real difference of two pair subsets (e.g. onehop,multihop) per "
                          "model×family, BH-FDR, and pooled over all cells (stimuli resampled jointly)")
+    ap.add_argument("--subset", default=None,
+                    help="score real - twin on one pair subset (per_stim_rsa --pair-subsets ... --stimuli-null), "
+                         "e.g. multihop (never-stated pairs) or offcycle (pairs off the twin's cycle)")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
     if args.subsets:
@@ -68,6 +71,10 @@ def main() -> None:
                 if "real_l0" not in d:
                     continue
                 d = {**d, "real": d["real_l0"], "twin": d["twin_l0"]}
+            if args.subset:
+                if args.subset not in d.get("twin_subsets", {}):
+                    continue
+                d = {**d, "real": d["real_subsets"][args.subset], "twin": d["twin_subsets"][args.subset]}
             D[(d["model"], d["family"])] = d
     fams = args.families.split(",") if args.families else sorted({f for (_, f) in D})
     rng = np.random.default_rng(args.seed)
