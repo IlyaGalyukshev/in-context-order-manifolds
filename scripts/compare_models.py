@@ -55,6 +55,9 @@ def main() -> None:
     ap.add_argument("--subset", default=None,
                     help="score real - twin on one pair subset (per_stim_rsa --pair-subsets ... --stimuli-null), "
                          "e.g. multihop (never-stated pairs) or offcycle (pairs off the twin's cycle)")
+    ap.add_argument("--only-stimuli", default=None,
+                    help="comma list of stimuli jsonl files: keep only stimuli whose content_key is in them "
+                         "(e.g. the shared core set, excluding control-set stimuli of the same family and N)")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
     if args.subsets:
@@ -63,9 +66,14 @@ def main() -> None:
     models = args.models.split(","); labels = (args.labels or args.models).split(",")
     lab = dict(zip(models, labels))
     params = [float(x) for x in args.params.split(",")] if args.params else None
+    keep = None
+    if args.only_stimuli:
+        keep = {json.loads(l).get("content_key") for p in args.only_stimuli.split(",") for l in open(p)}
     D = {}
     for f in glob.glob(os.path.join(args.dumps, "*.json")):
         d = json.load(open(f))
+        if not isinstance(d, dict) or "model" not in d:              # not a per_stim_rsa dump
+            continue
         if d["model"] in models and d["scheme"] == args.scheme:
             if args.layer0:
                 if "real_l0" not in d:
@@ -75,6 +83,9 @@ def main() -> None:
                 if args.subset not in d.get("twin_subsets", {}):
                     continue
                 d = {**d, "real": d["real_subsets"][args.subset], "twin": d["twin_subsets"][args.subset]}
+            if keep is not None:
+                d = {**d, "real": {k: v for k, v in d["real"].items() if k.split("#")[0] in keep and "#" not in k},
+                     "twin": {k: v for k, v in d["twin"].items() if k.split("#")[0] in keep and "#" not in k}}
             D[(d["model"], d["family"])] = d
     fams = args.families.split(",") if args.families else sorted({f for (_, f) in D})
     rng = np.random.default_rng(args.seed)

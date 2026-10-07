@@ -114,14 +114,15 @@ def main():
                   f"incr={row['increment']:+.3f} [{row['ci'][0]:+.3f}, {row['ci'][1]:+.3f}]", flush=True)
     if a.dumps and a.models:
         res["models"] = []
+        keep = {json.loads(l).get("content_key") for p in (a.stimuli, a.stimuli_null) for l in open(p)}  # the same stimulus set
         for m in a.models.split(","):
             R, T = {}, {}
             for fam in a.families.split(","):
                 f = os.path.join(a.dumps, f"{m}__{fam}__{a.scheme}__N{a.n_items}.json")
                 if os.path.exists(f):
                     d = json.load(open(f))
-                    R[fam] = np.array([v for v in d["real"].values() if np.isfinite(v)])
-                    T[fam] = np.array([v for v in d["twin"].values() if np.isfinite(v)])
+                    R[fam] = np.array([v for k, v in d["real"].items() if np.isfinite(v) and k in keep])
+                    T[fam] = np.array([v for k, v in d["twin"].items() if np.isfinite(v) and k in keep])
             if not R:
                 continue
             drop = lambda RR, TT: 1 - np.mean([t.mean() for t in TT.values()]) / np.mean([r.mean() for r in RR.values()])

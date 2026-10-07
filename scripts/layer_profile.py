@@ -28,7 +28,20 @@ def main() -> None:
     ap.add_argument("--condition", default="shuffle"); ap.add_argument("--n-items", type=int, default=12)
     ap.add_argument("--n-boot", type=int, default=1000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json", required=True)
+    ap.add_argument("--print-curves", action="store_true",
+                    help="also print each curve as one CURVE line (closed contour: the log carries the figure data)")
+    ap.add_argument("--from-log", default=None, help="rebuild --json from the CURVE lines of a log and exit")
     args = ap.parse_args()
+    if args.from_log:
+        out = []
+        for line in open(args.from_log, errors="replace"):
+            if "CURVE " not in line:
+                continue
+            model, fam, sc, nr, nt, inc, lo, hi = line.strip().split("CURVE ", 1)[1].split(" ")
+            f = lambda x: [float(v) for v in x.split(":", 1)[1].split(",")]
+            out.append(dict(model=model, family=fam, scheme=sc, L=len(f(inc)), n_real=int(nr), n_twin=int(nt),
+                            increment=f(inc), ci_lo=f(lo), ci_hi=f(hi)))
+        json.dump(out, open(args.json, "w")); print(f"rebuilt {len(out)} curves -> {args.json}"); return
     rng = np.random.default_rng(args.seed); out = []
     for fam in args.families.split(","):
         for sc in args.schemes.split(","):
@@ -45,6 +58,9 @@ def main() -> None:
             lo, hi = np.nanpercentile(bs, 2.5, 0), np.nanpercentile(bs, 97.5, 0)
             out.append(dict(model=args.model, family=fam, scheme=sc, L=int(L), n_real=len(R), n_twin=len(T),
                             increment=[float(x) for x in inc], ci_lo=[float(x) for x in lo], ci_hi=[float(x) for x in hi]))
+            if args.print_curves:
+                j = lambda v: ",".join(f"{x:.4f}" for x in v)
+                print(f"CURVE {args.model} {fam} {sc} {len(R)} {len(T)} inc:{j(inc)} lo:{j(lo)} hi:{j(hi)}", flush=True)
             pk = int(np.nanargmax(inc))
             print(f"{args.model} {fam:9s} {sc:9s} layer0={inc[0]:+.3f} [{lo[0]:+.3f},{hi[0]:+.3f}]  peak L{pk}/{L - 1} "
                   f"({pk / (L - 1):.0%}) {inc[pk]:+.3f}", flush=True)

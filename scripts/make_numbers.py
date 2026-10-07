@@ -244,6 +244,22 @@ def main():
             put(mname("SteerCtrlDoseLo", f), f"{r['answered_along'][0]:.1f}"); put(mname("SteerCtrlDoseHi", f), f"{r['answered_along'][-1]:.1f}")
         put(mname("SteerCtrl", "Parse"), f"{100 * sc['s0_zib']['parse_rate']:.0f}")
 
+    # ---- never-stated (multi-hop) pairs: real - twin on pairs that never share a card ----
+    MH = load(F, "v11/subsets/cmp_multihop.json"); AL = load(F, "v11/subsets/cmp_all.json")
+    if MH:
+        tagmap = {"E2B": "EtwoB", "E4B": "EfourB", "12B": "Gtwelve", "Q4B": "Qfour", "Q8B": "Qeight", "Q14B": "Qonefour"}
+        pos = 0
+        for r in MH["pooled"]:
+            t = tagmap.get(r["label"], r["label"])
+            put(mname("Mh", t), f3(r["increment"], True)); put(mname("MhCI", t), ci(r["ci"]))
+            pos += r["ci"][0] > 0
+        put(mname("Mh", "Pos"), str(pos)); put(mname("Mh", "N"), str(len(MH["pooled"])))
+        if AL:
+            fr = {a_["label"]: m["increment"] / a_["increment"] for a_ in AL["pooled"] for m in MH["pooled"]
+                  if m["label"] == a_["label"] and a_["increment"] > 0 and m["ci"][0] > 0}
+            if fr:
+                put(mname("Mh", "FracLo"), f"{100 * min(fr.values()):.0f}"); put(mname("Mh", "FracHi"), f"{100 * max(fr.values()):.0f}")
+
     # ---- stated vs inferred ----
     for tag, rel in (("Gemma", "v11/sub_ladder.json"), ("Qwen", "v11/sub_qwen.json")):
         s = load(F, rel)
@@ -346,6 +362,12 @@ def main():
         if tag.startswith("Q"):
             qmax = max(qmax, len(sigr))
     put(mname("Coup", "QwenMax"), str(qmax))
+
+    # ---- coupling: number of errors behind the robust-significant Gemma-4 cells (separation check) ----
+    errs = [round(r["n_pairs"] * (1 - r["accuracy"])) for t in ("Gtwelve", "Gthirtyone") for r in cm.get(t, [])
+            if r.get("n_pairs") and r.get("beta_robust_ci") and r["beta_robust_ci"][0] > 0]
+    if errs:
+        put(mname("Coup", "ErrMin"), str(min(errs))); put(mname("Coup", "ErrMax"), str(max(errs)))
 
     # ---- confound audit ----
     t = open(os.path.join(F, "v11", "audit_core.txt")).read() if os.path.exists(os.path.join(F, "v11", "audit_core.txt")) else ""

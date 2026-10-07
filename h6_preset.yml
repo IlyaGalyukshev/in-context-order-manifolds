@@ -1,5 +1,6 @@
 # h6_preset.yml — Gemma-4-31B on the mlc H100 platform (closed contour, numbers to the log only).
 # Answers the review points that need the 31B model:
+#   (0) depth profiles per read-out site on the shared N=12 set (Figure 1);
 #   (1) read-out sites on N=12: roster token, the primary card (card_mean), all cards that mention the entity
 #       (cards_mean) and the entity name over all mentions (name), each with the layer-0 control;
 #   (2) real - twin on pair subsets: never-stated pairs (multihop), pairs inside the twin's cycle (oncycle)
@@ -10,7 +11,7 @@
 #
 #   git pull && mlc job submit -p galyukshev --preset-file h6_preset.yml --verbose
 #   J=$(mlc job ls -p galyukshev | awk '/h6-31b/{print $1; exit}')
-#   mlc job logs "$J" | grep -E '===|INC|POOL|incr=|L0|model |noise-matched|baseline|along_slope|parse_rate|Error|Traceback'
+#   mlc job logs "$J" | grep -E '===|INC|POOL|incr=|L0|model |noise-matched|baseline|along_slope|parse_rate|CURVE|peak|Error|Traceback'
 job:
   time_limit: 24h0m0s
   flavor: h100-2x
@@ -82,6 +83,8 @@ job:
       python3 scripts/generate_bcs.py --out /work/data/n12 --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --n-grid 12 --per-cell 40 --difficulty hard --conditions shuffle &&
       echo "=== H6.1 extraction N=12, four read-out sites ===" &&
       for S in stimuli stimuli_null; do python3 scripts/extract_repeat.py --model google_gemma-4-31B-it --model-path /hf_models --role instruct --device-map auto --k 6 --loci readout,card_mean,cards_mean,name --store rdm --stimuli /work/data/n12/$S.jsonl --out /work/manifolds/h6/acts; done ;
+      echo "=== H6.1b depth profiles (CURVE lines carry the figure data) ===" ;
+      python3 scripts/layer_profile.py --acts /work/manifolds/h6/acts --model google_gemma-4-31B-it --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --schemes readout,card_mean,cards_mean,name --n-items 12 --print-curves --json /work/manifolds/h6/profile.json ;
       echo "=== H6.2 per-scheme real - twin and layer-0 control ===" ;
       for SC in readout card_mean cards_mean name; do python3 scripts/per_stim_rsa.py --acts /work/manifolds/h6/acts --model google_gemma-4-31B-it --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme $SC --n-items 12 --pair-subsets multihop,oncycle,offcycle --stimuli /work/data/n12/stimuli.jsonl --stimuli-null /work/data/n12/stimuli_null.jsonl --out /work/manifolds/h6/dumps ; python3 scripts/compare_models.py --dumps /work/manifolds/h6/dumps --models google_gemma-4-31B-it --labels G31B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme $SC ; python3 scripts/compare_models.py --dumps /work/manifolds/h6/dumps --models google_gemma-4-31B-it --labels G31B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme $SC --layer0 ; done ;
       echo "=== H6.3 pair subsets (readout) ===" ;

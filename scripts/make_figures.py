@@ -750,10 +750,37 @@ def fig_stimulus(figdata, out, dump):
 
 
 
+def fig_multihop(figdata, out, dump):
+    """Real - twin increment over all interior pairs vs only never-stated (multi-hop) pairs, pooled over families."""
+    A = _one(figdata, "v11/subsets", "cmp_all.json"); M = _one(figdata, "v11/subsets", "cmp_multihop.json")
+    if not A or not M:
+        print("  multihop: need v11/subsets/cmp_{all,multihop}.json"); return
+    name = {"E2B": "Gemma-4-E2B", "E4B": "Gemma-4-E4B", "12B": "Gemma-4-12B", "Q4B": "Qwen3-4B", "Q8B": "Qwen3-8B",
+            "Q14B": "Qwen3-14B"}
+    labs = [r["label"] for r in A["pooled"]]
+    if dump:
+        for l in labs:
+            a = next(r for r in A["pooled"] if r["label"] == l); m = next(r for r in M["pooled"] if r["label"] == l)
+            print(f"  {l:5s} all {a['increment']:+.3f} {a['ci']}  never-stated {m['increment']:+.3f} {m['ci']}")
+        return
+    plt = _style()
+    fig, ax = plt.subplots(figsize=(3.6, 2.4))
+    for k, (src, col, lab_) in enumerate(((A, "#9aa2ab", "all pairs"), (M, "#2a78d6", "never-stated pairs"))):
+        for i, l in enumerate(labs):
+            r = next(x for x in src["pooled"] if x["label"] == l)
+            ax.errorbar(i + (k - 0.5) * 0.28, r["increment"], yerr=[[r["increment"] - r["ci"][0]], [r["ci"][1] - r["increment"]]],
+                        fmt="o", ms=4, color=col, capsize=0, lw=1.2, label=lab_ if i == 0 else None)
+    ax.axhline(0, color="#888", lw=0.8, ls="--")
+    ax.set_xticks(range(len(labs)), [name.get(l, l) for l in labs], fontsize=6.5, rotation=30, ha="right", rotation_mode="anchor")
+    ax.set_ylabel("real − twin RSA (pooled)"); ax.legend(frameon=False, fontsize=6.5, loc="upper right")
+    _save(fig, out, "fig_multihop")
+
+
+
 FIGS = {"cpca": fig_cpca, "manifold": fig_manifold, "stated": fig_stated, "e10": fig_e10,
         "crossform": fig_crossform, "bridge": fig_bridge,
         "locus": fig_locus, "ladder": fig_ladder, "stated_v11": fig_stated_v11, "scale": fig_scale,
-        "stimulus": fig_stimulus, "querylocal": fig_querylocal, "months": fig_months, "causal": fig_causal, "coupling": fig_coupling}
+        "stimulus": fig_stimulus, "multihop": fig_multihop, "querylocal": fig_querylocal, "months": fig_months, "causal": fig_causal, "coupling": fig_coupling}
 
 
 def main():
