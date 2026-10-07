@@ -141,6 +141,7 @@ def main():
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--model-path", default=None, help="cluster/local weights dir (offline, no roster)")
     ap.add_argument("--role", default="instruct")
+    ap.add_argument("--device-map", default="cuda:0", help="transformers device_map (auto = shard across visible GPUs)")
     args = ap.parse_args()
 
     if args.model_path:                                        # cluster: local weights, no roster
@@ -154,7 +155,7 @@ def main():
     is_qwen = "qwen" in args.model.lower()
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation=spec.get("attn_implementation", "eager"),
-        device_map="cuda:0", local_files_only=local_only).eval()
+        device_map=args.device_map, local_files_only=local_only).eval()
     layers = get_decoder_layers(model); n_layers = len(layers)
     alphas = [float(a) for a in args.alphas.split(",")]
     stims = [json.loads(l) for l in open(args.stimuli)]
@@ -239,12 +240,12 @@ def main():
                         # E9(a): target-mode SETS the coord to an absolute axis position mean+a·spread
                         # (answered rank should TRACK a); default mode ADDS a·spread (dose-response).
                         tgt = (mean_coord + a * spread) if args.target_mode else None
-                        enc = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                        enc = tok(block, return_tensors="pt", add_special_tokens=False).to(model.device)
                         state.update(vec=vec, pos=pos, scale=a * spread, target=tgt)
                         with torch.no_grad():
                             allh = model(**enc, output_hidden_states=True).hidden_states
                         dec = float(decode_peak(allh[LP][0][pos].float().mean(0, keepdim=True).cpu().numpy())[0])
-                        encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                        encq = tok(qtext, return_tensors="pt", add_special_tokens=False).to(model.device)
                         state.update(vec=vec, pos=qpos, scale=a * spread, target=tgt)
                         with torch.no_grad():
                             g = model.generate(**encq, max_new_tokens=8, do_sample=False,

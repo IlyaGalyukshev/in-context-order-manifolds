@@ -1,0 +1,90 @@
+# h5_preset.yml — Qwen3-32B on the mlc H100 platform (closed contour, numbers to the log only).
+# Extends the Qwen3 scale ladder (0.6/1.7/4/8B on DGX, 14B on DGX) and gives a second large model for the
+# causal tests run on Gemma-4-31B in h4:
+#   (1) behaviour gate + roster-token extraction on the shared core set, per-stimulus RSA (N=12) and the
+#       real-twin increment with bootstrap CI (compare_models; prints INC/POOL lines);
+#   (2) steering with permuted-rank control axes and a held-out axis at the pre-registered depth (~0.53 -> layer 34/64);
+#   (3) activation transplant with cross-stimulus donors at ~0.39/0.53 depth (layers 25, 34);
+#   (4) coupling (robust model).
+#
+#   git pull && mlc job submit -p galyukshev --preset-file h5_preset.yml --verbose
+#   J=$(mlc job ls -p galyukshev | awk '/h5-q32b/{print $1; exit}')
+#   mlc job logs "$J" | grep -E 'GATE|INC|POOL|toward|CROSS|TWIN|along_slope|parse_rate|coupling|Error|Traceback'
+job:
+  time_limit: 24h0m0s
+  flavor: h100-2x
+  generate_name: h5-q32b
+  image: docker-proxy.artifactory.tcsbank.ru/huggingface/transformers-pytorch-gpu:latest
+  work_dir: /work
+
+  storages:
+    - name: manifolds
+      type: mlc_storage
+      src: manifolds
+      dst: "/work/manifolds"
+      readwrite: true
+
+  input:
+    - type: files
+      src: ./
+      dst: "/work/"
+      mask: "run_scripts.sh"
+    - type: files
+      src: ./scripts/
+      dst: "/work/scripts/"
+      mask: "*"
+    - type: files
+      src: ./configs/
+      dst: "/work/configs/"
+      mask: "*"
+    - type: files
+      src: ./data/pools/
+      dst: "/work/data/pools/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/
+      dst: "/work/src/icom/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/battery/
+      dst: "/work/src/icom/battery/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/extraction/
+      dst: "/work/src/icom/extraction/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/generator/
+      dst: "/work/src/icom/generator/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/probes/
+      dst: "/work/src/icom/probes/"
+      mask: "*"
+    - type: files
+      src: ./src/icom/utils/
+      dst: "/work/src/icom/utils/"
+      mask: "*"
+    - type: model_registry
+      mrid: huggingface-proxy/Qwen/Qwen3-32B/9216db5781bf21249d130ec9da846c4624c16137
+      dst: /hf_models/
+
+  args:
+    - bash
+    - -lc
+    - >
+      (pip install -q "transformers==5.13.0" || pip install -q "git+https://github.com/huggingface/transformers.git@v5.13.0") &&
+      pip install -q accelerate scipy scikit-learn pandas pyarrow pyyaml sentencepiece protobuf &&
+      export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false MODEL_PATH=/hf_models PYTHONPATH=/work/src &&
+      cd /work && { du -sh /work/manifolds/* 2>/dev/null || true; } &&
+      python3 scripts/generate_bcs.py --out /work/data/sweep/core --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --n-grid 7,9,12,16 --per-cell 40 --difficulty hard --conditions shuffle &&
+      echo "=== H5.1 gate + extraction + acts_mean + coupling ===" &&
+      OUT_ROOT=/work/manifolds DATA_DIR=/work/data/sweep MODEL_PATH=/hf_models DEVICE_MAP=auto EXTRACT_DS=core STAGES=gate,extract,acts_mean,coupling bash /work/run_scripts.sh Qwen/Qwen3-32B ;
+      python3 scripts/summarize.py /work/manifolds/Qwen_Qwen3-32B /work/data/sweep/core/questions.jsonl | grep -E 'GATE|RSA' ;
+      echo "=== H5.2 roster-token RSA, real - twin ===" &&
+      python3 scripts/per_stim_rsa.py --acts /work/manifolds/Qwen_Qwen3-32B/acts --model Qwen_Qwen3-32B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme readout --n-items 12 --pair-subsets onehop,multihop --stimuli /work/data/sweep/core/stimuli.jsonl --out /work/manifolds/Qwen_Qwen3-32B/dumps &&
+      python3 scripts/compare_models.py --dumps /work/manifolds/Qwen_Qwen3-32B/dumps --models Qwen_Qwen3-32B --labels Q32B --families s0_zib,s0_quomp,s1_size,s1_loud,s1_heat --scheme readout --json /work/manifolds/Qwen_Qwen3-32B/cmp_ro.json ;
+      echo "=== H5.3 steering with permuted-rank control axes ===" &&
+      python3 scripts/steer_rank.py --model Qwen_Qwen3-32B --model-path /hf_models --role instruct --acts /work/manifolds/Qwen_Qwen3-32B/acts_mean --stimuli /work/data/sweep/core/stimuli.jsonl --families s0_zib,s1_size --scheme readout --n-stim 32 --alphas="-8,-4,-2,0,2,4,8" --n-offaxis 49 --control-axes perm:20 --exclude-steered --steer-layers 34 --out /work/manifolds/Qwen_Qwen3-32B/steer_ctrl.parquet ;
+      echo "=== H5.4 transplant, cross-stimulus donors ===" &&
+      python3 scripts/patch_entity.py --model qwen3-32b --model-path /hf_models --stimuli /work/data/sweep/core/stimuli.jsonl --twin-stimuli /work/data/sweep/core/stimuli_null.jsonl --cross-donor --families s0_zib,s1_size --scheme readout --patch-layers 25,34 --n-stim 100 --n-pairs 2 --n-boot 2000 --out /work/manifolds/Qwen_Qwen3-32B/xdonor.parquet

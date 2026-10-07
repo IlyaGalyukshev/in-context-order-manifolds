@@ -212,6 +212,28 @@ def main():
         if rec.get(k) is not None:
             put(mname("Recon", k), f2(rec[k]))
 
+    # ---- 31B confirmatory controls (h4): months CI, cross-stimulus transplant, permuted-rank steering axes ----
+    mc = mlc.get("months_ci")
+    if mc:
+        put(mname("MonthThirtyonePool"), f3(mc["pooled"]["increment"], True)); put(mname("MonthThirtyonePoolCI"), ci(mc["pooled"]["ci"]))
+        for fam in ("s0_zib", "s0_quomp"):
+            put(mname("MonthThirtyoneCI", fam.split("_")[1]), ci(mc[fam]["ci"]))
+    tc = mlc.get("transplant_cross", {}).get("s0_zib_L33")
+    if tc:
+        put(mname("TpX", "B"), f2(tc["towardBx"])); put(mname("TpX", "C"), f2(tc["towardCx"]))
+        put(mname("TpX", "D"), f2(tc["delta"], True)); put(mname("TpX", "DCI"), ci(tc["ci"], 2)); put(mname("TpX", "N"), str(tc["n"]))
+    sc = mlc.get("steer_ctrl")
+    if sc:
+        put(mname("SteerCtrl", "NPerm"), str(sc["n_perm"]))
+        for fam in ("s0_zib", "s1_size"):
+            r = sc[fam]; f = fam.split("_")[1]
+            put(mname("SteerCtrl", f), f3(r["along_slope"], True))
+            put(mname("SteerCtrlPerm", f), f3(r["perm_mean"], True)); put(mname("SteerCtrlPermSd", f), f3(r["perm_sd"]))
+            put(mname("SteerCtrlPP", f), f"{r['p_perm']:.3f}")
+            put(mname("SteerCtrlZperm", f), f"{(r['along_slope'] - r['perm_mean']) / r['perm_sd']:.1f}")
+            put(mname("SteerCtrlDoseLo", f), f"{r['answered_along'][0]:.1f}"); put(mname("SteerCtrlDoseHi", f), f"{r['answered_along'][-1]:.1f}")
+        put(mname("SteerCtrl", "Parse"), f"{100 * sc['s0_zib']['parse_rate']:.0f}")
+
     # ---- stated vs inferred ----
     for tag, rel in (("Gemma", "v11/sub_ladder.json"), ("Qwen", "v11/sub_qwen.json")):
         s = load(F, rel)
@@ -281,6 +303,10 @@ def main():
             put(mname("Steer", t, fam.split("_")[1]), f3(r["along_slope"], True))
             put(mname("SteerP", t, fam.split("_")[1]), f"{r['p']:.2f}")
             put(mname("SteerL", t), str(r["layer"]))
+            if "p_perm" in r:                                   # permuted-rank control axes
+                f = fam.split("_")[1]
+                put(mname("SteerPerm", t, f), f3(r["perm_mean"], True)); put(mname("SteerPermSd", t, f), f3(r["perm_sd"]))
+                put(mname("SteerPP", t, f), f"{r['p_perm']:.2f}"); put(mname("SteerNPerm", t), str(r["n_perm"]))
 
     # ---- coupling (robust model) ----
     cm = {"Gthirtyone": mlc.get("coupling", [])}

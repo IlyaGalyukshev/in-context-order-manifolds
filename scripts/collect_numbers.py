@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 
 STEER_RE = re.compile(r"^(\S+)\s+(\S+)\s+L(\d+)\s+\|\s+along_slope=([+-]?[\d.]+)\s+offaxis_null=([+-]?[\d.]+)"
                       r"±([\d.]+)\s+\(n=(\d+)\)\s+p\(\|off\|>=\|along\|\)=([\d.]+)")
+PERM_RE = re.compile(r"^(\S+)\s+\S+\s+L\d+\s+\|\s+along_slope=[+-]?[\d.]+\s+permaxis_null=([+-]?[\d.]+)"
+                     r"±([\d.]+)\s+\(n=(\d+)\)\s+p_perm\(\|perm\|>=\|along\|\)=([\d.]+)")
 
 
 def gate_lp(path, Q):
@@ -132,6 +135,10 @@ def steer(path):
             fam, scheme, L, al, nm, ns, n, p = m.groups()
             out[fam] = {"scheme": scheme, "layer": int(L), "along_slope": float(al), "null_mean": float(nm),
                         "null_sd": float(ns), "n_offaxis": int(n), "p": float(p)}
+        m = PERM_RE.match(line.strip())
+        if m:                                                  # permuted-rank control axes (steer_rank --control-axes perm:K)
+            fam, pm, ps, n, p = m.groups()
+            out.setdefault(fam, {}).update({"perm_mean": float(pm), "perm_sd": float(ps), "n_perm": int(n), "p_perm": float(p)})
     return out
 
 
@@ -142,8 +149,11 @@ def main():
     ap.add_argument("--questions", default=None)
     ap.add_argument("--stimuli", default=None)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--update", action="store_true", help="merge the given tags into an existing --out instead of rewriting it")
     a = ap.parse_args()
     res = {"gate": {}, "steer": {}}
+    if a.update and os.path.exists(a.out):
+        res = json.load(open(a.out))
     Q = {}
     if a.questions:
         for line in open(a.questions):
@@ -178,7 +188,8 @@ def main():
               f"lp={g.get('pairwise_lp', {}).get('acc', float('nan')):.3f}")
     for tag, s in res["steer"].items():
         for fam, r in s.items():
-            print(f"steer {tag:12s} {fam:8s} L{r['layer']} slope={r['along_slope']:+.3f} p={r['p']:.3f}")
+            print(f"steer {tag:12s} {fam:8s} L{r['layer']} slope={r['along_slope']:+.3f} p={r['p']:.3f}"
+                  + (f" p_perm={r['p_perm']:.3f}" if "p_perm" in r else ""))
 
 
 if __name__ == "__main__":

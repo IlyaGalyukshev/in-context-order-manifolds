@@ -506,7 +506,8 @@ def fig_months(figdata, out, dump):
     lab = {"gemma12b": "Gemma-4-12B", "qwen4b": "Qwen3-4B", "olmo7b": "OLMo-3-7B"}
     pts = []                                                  # (model, family, inc, lo, hi)
     for r in (mlc or {}).get("months", []):
-        pts.append(("Gemma-4-31B", r["family"], r["increment"], None, None))
+        c = (mlc.get("months_ci") or {}).get(r["family"], {}).get("ci", [None, None])
+        pts.append(("Gemma-4-31B", r["family"], r["increment"], c[0], c[1]))
     for r in (d or {}).get("per_model", []):
         pts.append((lab.get(r["label"], r["label"]), r["family"], r["increment"], r["ci"][0], r["ci"][1]))
     models = list(dict.fromkeys(p[0] for p in pts))
@@ -557,17 +558,29 @@ def fig_causal(figdata, out, dump):
             print(f"  31B {r['family']:8s} L{r['layer']} B {r['towardB']} C {r['towardC']} Btwin {r['towardBtwin']} d {r['delta']} {r['ci']}")
         return
     plt = _style()
-    fig, a = plt.subplots(figsize=(3.6, 2.6))
+    fig, a = plt.subplots(figsize=(3.6, 2.5))
     figb, b = plt.subplots(figsize=(3.6, 2.6))
-    if df is not None:
-        for fam, ls in (("s0_zib", "-"), ("s1_size", ":")):
-            al, off = _dose(df, fam)
-            a.fill_between(off.index, off.quantile(0.025, axis=1), off.quantile(0.975, axis=1), color="#9aa2ab", alpha=0.25, lw=0)
-            a.plot(off.index, off.mean(axis=1), color="#6b7480", lw=1.2, ls=ls)
-            a.plot(al.index, al.values, color=FAMCOL[fam], lw=1.8, ls=ls, marker="o", ms=3, label=f"{FAMLAB[fam]}: along axis")
-        a.plot([], [], color="#6b7480", label="49 off-axis (mean, 95%)")
-    a.set_xlabel("steering strength α (layer 26/48)"); a.set_ylabel("answered position")
-    a.set_title("Gemma-4-12B, 64 stimuli", fontsize=8, fontweight="normal"); a.legend(frameon=False, fontsize=6.5)
+    # (a) along-axis slope vs the two control distributions (held-out axis, same layer as the confirmatory test)
+    C = _one(figdata, "v11", "collected.json") or {}
+    rows = []                                                  # (label, fam, along, off_m, off_sd, perm_m, perm_sd)
+    for fam in ("s0_zib", "s1_size"):
+        r = ((mlc or {}).get("steer_ctrl") or {}).get(fam)
+        if r:
+            rows.append((f"G4-31B {FAMLAB[fam]}", fam, r["along_slope"], r["offaxis_mean"], r["offaxis_sd"], r["perm_mean"], r["perm_sd"]))
+    for fam in ("s0_zib", "s1_size"):
+        r = C.get("steer", {}).get("12B_ctrl", {}).get(fam)
+        if r and "p_perm" in r:
+            rows.append((f"G4-12B {FAMLAB[fam]}", fam, r["along_slope"], r["null_mean"], r["null_sd"], r["perm_mean"], r["perm_sd"]))
+    for k, (lab, fam, al, om, osd, pm, psd) in enumerate(rows):
+        y = len(rows) - 1 - k
+        a.plot([pm - 2 * psd, pm + 2 * psd], [y + 0.12] * 2, color="#b9c0c8", lw=5, solid_capstyle="butt",
+               label="permuted-rank axes (±2 SD)" if k == 0 else None)
+        a.plot([om - 2 * osd, om + 2 * osd], [y - 0.12] * 2, color="#6b7480", lw=2, solid_capstyle="butt",
+               label="off-axis directions (±2 SD)" if k == 0 else None)
+        a.plot(al, y, "o", color=FAMCOL[fam], ms=6, mec="white", mew=0.8, zorder=3)
+    a.axvline(0, color="#888", lw=0.8, ls="--")
+    a.set_yticks(range(len(rows)), [r[0] for r in rows][::-1], fontsize=7); a.set_ylim(-0.6, len(rows) - 0.2)
+    a.set_xlabel("slope of answered position on α (dot: rank axis)"); a.legend(frameon=False, fontsize=6.5, ncol=2, loc="lower center", bbox_to_anchor=(0.45, 1.0))
     fams = ["s0_zib", "s1_size", "s1_loud"]; x = np.arange(len(fams)); w = 0.13
     for li, L in enumerate((24, 33)):
         for k, (key, col, name) in enumerate((("towardB", "#2a78d6", "donor B (real)"), ("towardBtwin", "#9cc0ec", "donor B (twin)"),

@@ -78,6 +78,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--model-path", default=None, help="cluster/local weights dir (offline, no roster)")
     ap.add_argument("--role", default="instruct")
+    ap.add_argument("--device-map", default="cuda:0", help="transformers device_map (auto = shard across visible GPUs)")
     ap.add_argument("--twin-stimuli", default=None,
                     help="coherence-null twins (stimuli_null.jsonl): adds the patchBtwin donor condition")
     ap.add_argument("--n-boot", type=int, default=1000)
@@ -97,7 +98,7 @@ def main():
     tok = AutoTokenizer.from_pretrained(spec["hf_id"], local_files_only=local_only)
     model = AutoModelForCausalLM.from_pretrained(
         spec["hf_id"], dtype=torch.float16, attn_implementation=spec.get("attn_implementation", "eager"),
-        device_map="cuda:0", local_files_only=local_only).eval()
+        device_map=args.device_map, local_files_only=local_only).eval()
     layers = get_decoder_layers(model); n_layers = len(layers)
     patch_layers = ([int(x) for x in args.patch_layers.split(",")] if args.patch_layers
                     else [max(2, int(n_layers * f)) for f in (0.40, 0.55, 0.70)])
@@ -123,7 +124,7 @@ def main():
         h = out[0] if isinstance(out, tuple) else out
         if h.shape[1] <= max(state["pos"]):                  # skip KV-cached single-token gen steps
             return out
-        h[0, state["pos"], :] = state["donor"].to(h.dtype)   # REPLACE A's stream with the donor entity's
+        h[0, state["pos"], :] = state["donor"].to(h.device, h.dtype)   # REPLACE A's stream with the donor entity's
         return (h,) + out[1:] if isinstance(out, tuple) else h
 
     want_decl = (None if args.declared == "none" else args.declared) if args.declared != "__any__" else "__any__"
@@ -138,14 +139,14 @@ def main():
                 ][: (2 if args.smoke else args.n_stim)]
         for s in pool:
             block = chat(s["prompt"], gen=False)
-            enc_b = tok(block, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+            enc_b = tok(block, return_tensors="pt", add_special_tokens=False).to(model.device)
             with torch.no_grad():
                 hs = model(**enc_b, output_hidden_states=True).hidden_states  # tuple[L+1] of [1,T,D]
             tw = twin_of.get((s.get("family"), s.get("condition"), s.get("n_items"), tuple(s["latent_order"])))
             hs_t = block_t = None
             if tw is not None:
                 block_t = chat(tw["prompt"], gen=False)
-                enc_t = tok(block_t, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                enc_t = tok(block_t, return_tensors="pt", add_special_tokens=False).to(model.device)
                 with torch.no_grad():
                     hs_t = model(**enc_t, output_hidden_states=True).hidden_states
             hs_x = block_x = s_x = None
@@ -157,7 +158,7 @@ def main():
                         s_x = c; break
                 if s_x is not None:
                     block_x = chat(s_x["prompt"], gen=False)
-                    enc_x = tok(block_x, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                    enc_x = tok(block_x, return_tensors="pt", add_special_tokens=False).to(model.device)
                     with torch.no_grad():
                         hs_x = model(**enc_x, output_hidden_states=True).hidden_states
             for (A, B, C, rA, rB, rC) in _pairs_for(s, args.n_pairs, rng):
@@ -171,7 +172,7 @@ def main():
                 qposA = mention_token_ids(qtext, A, tok, which)
                 if not qposA:
                     continue
-                enc_q = tok(qtext, return_tensors="pt", add_special_tokens=False).to("cuda:0")
+                enc_q = tok(qtext, return_tensors="pt", add_special_tokens=False).to(model.device)
                 if max(qposA) >= enc_q["input_ids"].shape[1]:
                     continue
                 posBt = mention_token_ids(block_t, B, tok, which) if hs_t is not None else None
