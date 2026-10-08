@@ -63,8 +63,14 @@ def main():
     def put(name, val):
         M[name] = val
 
-    # ---- input-layer diagnostic (Gemma-4-31B depth profile) ----
-    prof = load(F, "v11/profile_31B.json") or []
+    # ---- input-layer diagnostic: depth profile on the shared N=12 set (31B if available, else 12B) ----
+    prof, locus_model = [], None
+    for m_, lab_ in (("google_gemma-4-31B-it", "Gemma-4-31B"), ("google_gemma-4-12B-it", "Gemma-4-12B")):
+        prof = load(F, f"v11/pool/profile_{m_}.json") or []
+        if prof:
+            locus_model = lab_; break
+    if locus_model:
+        put("NLocusModel", locus_model)
     card = [r for r in prof if r["scheme"] == "card_mean"]
     ro = [r for r in prof if r["scheme"] == "readout"]
     if card:
@@ -91,21 +97,23 @@ def main():
             put(mname("QsixCardLo"), f3(min(sc), True)); put(mname("QsixCardHi"), f3(max(sc), True))
 
     # ---- no-integration baseline: relative real->twin drop, baseline vs models ----
-    gb = [load(F, "v11/graph_baseline_gemma.json"), load(F, "v11/graph_baseline_qwen.json"), load(F, "v11/graph_baseline_olmo.json")]
+    gb = [load(F, "v11/graph_baseline_gemma.json"), load(F, "v11/graph_baseline_qwen14.json") or load(F, "v11/graph_baseline_qwen.json"),
+          load(F, "v11/graph_baseline_olmo.json")]
     if gb[0]:
         for r in gb[0]["rows"]:
             if r["family"] == "pooled":
                 put(mname("GbDrop", "hop", r["hop"]), f2(r["rel_drop"])); put(mname("GbIncr", "hop", r["hop"]), f3(r["increment"], True))
                 put(mname("GbReal", "hop", r["hop"]), f3(r["real"])); put(mname("GbTwin", "hop", r["hop"]), f3(r["twin"]))
         lab = {"google_gemma-4-E2B-it": "EtwoB", "google_gemma-4-E4B-it": "EfourB", "google_gemma-4-12B-it": "Gtwelve",
-               "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight"}
+               "google_gemma-4-31B-it": "Gthirtyone", "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight",
+               "Qwen_Qwen3-14B": "Qonefour"}
         above = 0
         for d in gb:
             for m in (d or {}).get("models", []):
                 if m["model"] in lab:
                     put(mname("GbModel", lab[m["model"]]), f2(m["rel_drop"])); put(mname("GbModelCI", lab[m["model"]]), ci(m["ci"], 2))
                 ab = {"google_gemma-4-E2B-it": "EtwoB", "google_gemma-4-E4B-it": "EfourB", "google_gemma-4-12B-it": "Gtwelve",
-                      "Qwen_Qwen3-0.6B": "Qzerosix", "Qwen_Qwen3-1.7B": "Qonesev", "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight",
+                      "google_gemma-4-31B-it": "Gthirtyone", "Qwen_Qwen3-14B": "Qonefour", "Qwen_Qwen3-0.6B": "Qzerosix", "Qwen_Qwen3-1.7B": "Qonesev", "Qwen_Qwen3-4B": "Qfour", "Qwen_Qwen3-8B": "Qeight",
                       "allenai_Olmo-3-7B-Instruct": "Olmo"}
                 if m["model"] in ab:
                     put(mname("AbsReal", ab[m["model"]]), f3(m["real"])); put(mname("AbsTwin", ab[m["model"]]), f3(m["twin"]))
@@ -113,11 +121,12 @@ def main():
                     above += 1
         put(mname("Gb", "GemmaAbove"), str(above))
     # noise-matched tallies: each Gemma model compared with tallies whose real RSA matches its own
-    nm = (load(F, "v11/graph_baseline_noise.json") or {}).get("noise_matched", []) \
-        + (load(F, "v11/graph_baseline_noise_qwen.json") or {}).get("noise_matched", [])
+    nm = [r for f in sorted(glob.glob(os.path.join(F, "v11", "graph_baseline_noise*.json")))
+          for r in json.load(open(f)).get("noise_matched", [])]
     if nm and gb[0]:
         tgt = {"EtwoB": "google_gemma-4-E2B-it", "EfourB": "google_gemma-4-E4B-it", "Gtwelve": "google_gemma-4-12B-it",
-               "Qfour": "Qwen_Qwen3-4B", "Qeight": "Qwen_Qwen3-8B"}
+               "Gthirtyone": "google_gemma-4-31B-it", "Qfour": "Qwen_Qwen3-4B", "Qeight": "Qwen_Qwen3-8B",
+               "Qonefour": "Qwen_Qwen3-14B"}
         mods = {m["model"]: m for g in gb if g for m in g["models"]}
         above_nm = 0
         for tag, m in tgt.items():
@@ -172,6 +181,8 @@ def main():
         put(mname("Pair", "Q32B"), f"{q32['gate']['pairwise']:.2f}"); put(mname("Recon", "Q32B"), f"{q32['gate']['reconstruction']:.2f}")
         put(mname("PairLp", "Q32B"), f"{q32['gate']['pairwise_lp']:.2f}")
         put(mname("Coup", "Q32B", "Plain"), str(q32["coupling_plain_sig"]))
+        if q32.get("abs"):
+            put(mname("AbsReal", "Qthirtytwo"), f3(q32["abs"]["real"])); put(mname("AbsTwin", "Qthirtytwo"), f3(q32["abs"]["twin"]))
     for d in (G, Q):
         for r in d["pooled"]:
             put(mname("Pooled", r["label"]), f3(r["increment"], r["increment"] < 0))
@@ -243,6 +254,17 @@ def main():
             put(mname("SteerCtrlZperm", f), f"{(r['along_slope'] - r['perm_mean']) / r['perm_sd']:.1f}")
             put(mname("SteerCtrlDoseLo", f), f"{r['answered_along'][0]:.1f}"); put(mname("SteerCtrlDoseHi", f), f"{r['answered_along'][-1]:.1f}")
         put(mname("SteerCtrl", "Parse"), f"{100 * sc['s0_zib']['parse_rate']:.0f}")
+
+    # ---- read-out sites on the shared N=12 set: primary card, all cards, name tokens, roster token (+ layer 0) ----
+    for mt, m in (("Gtwelve", "google_gemma-4-12B-it"), ("Qfour", "Qwen_Qwen3-4B"), ("Qzerosix", "Qwen_Qwen3-0.6B")):
+        for st, sc in (("Card", "card_mean"), ("Cards", "cards_mean"), ("Name", "name"), ("Ro", "readout")):
+            for sfx, lz in (("", ""), ("_L0", "Lzero")):
+                d = load(F, f"v11/pool/cmp_{m}_{sc}{sfx}.json")
+                if not d or not d.get("pooled"):
+                    continue
+                r = d["pooled"][0]
+                put(mname("Pool", mt, st, lz), f3(r["increment"], True)); put(mname("PoolCI", mt, st, lz), ci(r["ci"]))
+                put(mname("PoolSig", mt, st, lz), str(sum(1 for x in d["per_model"] if x.get("q_bh", 1) < 0.05 and x["ci"][0] > 0)))
 
     # ---- never-stated (multi-hop) pairs: real - twin on pairs that never share a card ----
     MH = load(F, "v11/subsets/cmp_multihop.json"); AL = load(F, "v11/subsets/cmp_all.json")

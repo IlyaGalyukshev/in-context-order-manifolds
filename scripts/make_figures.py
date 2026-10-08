@@ -358,23 +358,31 @@ FAMLAB = {"s1_size": "size", "s0_quomp": "quomp", "s0_zib": "zib", "s1_loud": "l
 
 
 def fig_locus(figdata, out, dump):
-    """Input-layer diagnostic: real−twin increment by depth, card-level pooling vs the entity token."""
-    rows = _load(figdata, "v11", "profile_*.json")
+    """Input-layer diagnostic: real - twin increment by depth for three read-out sites (primary card, all cards
+    that mention the entity, roster token) on the shared N=12 set; 31B profile if present, else 12B."""
+    rows, model = None, None
+    for m in ("google_gemma-4-31B-it", "google_gemma-4-12B-it"):
+        fp = os.path.join(figdata, "v11", "pool", f"profile_{m}.json")
+        rows = json.load(open(fp)) if os.path.exists(fp) else None
+        if rows:
+            model = m; break
     if not rows:
-        print("  locus: no v11/profile_*.json"); return
+        print("  locus: no v11/pool/profile_<model>.json"); return
     if dump:
         for r in rows:
-            print(f"  {r['model']} {r['family']:9s} {r['scheme']:9s} L0={r['increment'][0]:+.3f} peak={max(r['increment']):+.3f}")
+            print(f"  {model} {r['family']:9s} {r['scheme']:10s} L0={r['increment'][0]:+.3f} peak={max(r['increment']):+.3f}")
         return
     plt = _style()
-    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.6), sharey=True)
-    for ax, sc, title in ((axes[0], "card_mean", "Sentence-level pooling"), (axes[1], "readout", "Entity token (roster)")):
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.4), sharey=True)
+    for ax, sc, title in ((axes[0], "card_mean", "Pooled: first card"), (axes[1], "cards_mean", "Pooled: all cards"),
+                          (axes[2], "readout", "Entity token (roster)")):
         for r in [r for r in rows if r["scheme"] == sc]:
             x = np.arange(r["L"]) / (r["L"] - 1); c = FAMCOL.get(r["family"], "#555")
-            ax.plot(x, r["increment"], color=c, lw=1.6, label=FAMLAB.get(r["family"], r["family"]))
-            ax.fill_between(x, r["ci_lo"], r["ci_hi"], color=c, alpha=0.12, lw=0)
-        ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_title(title); ax.set_xlabel("relative depth (0 = embeddings)")
-    axes[0].set_ylabel("real − twin RSA"); axes[1].legend(frameon=False, ncol=1, loc="upper left")
+            ax.plot(x, r["increment"], color=c, lw=1.4, label=FAMLAB.get(r["family"], r["family"]))
+            ax.fill_between(x, r["ci_lo"], r["ci_hi"], color=c, alpha=0.10, lw=0)
+        ax.axhline(0, color="#888", lw=0.8, ls="--"); ax.set_title(title, fontsize=8.5, fontweight="normal")
+        ax.set_xlabel("relative depth (0 = embeddings)", fontsize=7.5)
+    axes[0].set_ylabel("real − twin RSA"); axes[2].legend(frameon=False, ncol=1, loc="upper left", fontsize=6.5)
     _save(fig, out, "fig_locus")
 
 
